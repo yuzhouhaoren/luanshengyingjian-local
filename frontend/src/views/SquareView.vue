@@ -30,25 +30,55 @@
       <div class="posts-section">
         <h2>广场动态</h2>
         <div class="posts-grid">
-          <div class="post-card" v-for="user in users" :key="user.id" @click="openChatDialog(user)">
+          <div class="post-card" v-for="post in posts" :key="post.id" @click="viewPostDetail(post)">
             <div class="post-header">
               <div class="post-author">
-                <div class="author-avatar">{{ user.name ? user.name.charAt(0) : user.username.charAt(0) }}</div>
+                <div class="author-avatar">{{ post.username ? post.username.charAt(0) : 'U' }}</div>
                 <div class="author-info">
-                  <span class="author-name">{{ user.name || user.username }}</span>
-                  <span class="gender-symbol">{{ user.gender === 'male' ? '♂' : user.gender === 'female' ? '♀' : '⚧' }}</span>
+                  <span class="author-name">{{ post.username }}</span>
                 </div>
               </div>
             </div>
             <div class="post-content">
-              <h3>{{ user.name || user.username }}的个人帖子</h3>
-              <p>{{ user.post_content || '点击查看详情并开始聊天' }}</p>
-              <img v-if="user.post_image" :src="user.post_image" alt="帖子图片" class="post-image">
+              <h3>{{ post.title }}</h3>
+              <p>{{ typeof post.content === 'string' ? post.content : post.content.content }}</p>
             </div>
             <div class="post-footer">
-              <button class="post-action">和Ta聊聊</button>
+              <div class="post-tags">
+                <span class="tag" v-for="(tag, index) in post.tags" :key="index">{{ tag }}</span>
+              </div>
+              <button class="post-action" @click.stop="openChatDialog(post)">和Ta聊聊</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 帖子详情页 -->
+    <div v-else-if="selectedPost" class="glass-card">
+      <div class="post-detail-header">
+        <button class="back-btn" @click="backToSquare">&larr; 返回广场</button>
+        <h1>{{ selectedPost.title }}</h1>
+      </div>
+      <div class="post-detail-content">
+        <div class="post-detail-author">
+          <div class="author-avatar">{{ selectedPost.username ? selectedPost.username.charAt(0) : 'U' }}</div>
+          <div class="author-info">
+            <span class="author-name">{{ selectedPost.username }}</span>
+            <span class="post-time">{{ formatTime(selectedPost.created_at) }}</span>
+          </div>
+        </div>
+        <div class="post-detail-body">
+          <p>{{ typeof selectedPost.content === 'string' ? selectedPost.content : selectedPost.content.content }}</p>
+          <div class="post-tags">
+            <span class="tag" v-for="(tag, index) in selectedPost.tags" :key="index">{{ tag }}</span>
+          </div>
+        </div>
+        <div class="post-detail-actions">
+          <button class="action-btn chat-btn" @click="openChatDialog(selectedPost)">
+            <span class="btn-icon">💬</span>
+            <span>开始聊天</span>
+          </button>
         </div>
       </div>
     </div>
@@ -70,6 +100,12 @@
           <button @click="sendMessage">发送</button>
         </div>
         <div class="chat-dialog-footer">
+          <div class="favor-score">
+            <span>好感度：{{ favorScore }}</span>
+            <div class="favor-bar">
+              <div class="favor-fill" :style="{ width: favorScore + '%' }"></div>
+            </div>
+          </div>
           <button class="friend-request-btn" @click="sendFriendRequest">发送交友申请</button>
         </div>
       </div>
@@ -83,7 +119,8 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 
 const router = useRouter();
-const users = ref([]);
+const posts = ref([]);
+const selectedPost = ref(null);
 const selectedBot = ref(null);
 const messages = ref([]);
 const messageInput = ref('');
@@ -91,6 +128,7 @@ const showIntentConfirm = ref(false);
 const userIntents = ref([]);
 const intentConfirmed = ref(false);
 const currentIntent = ref('');
+const favorScore = ref(0);
 
 // 初始化当前意向
 const initCurrentIntent = () => {
@@ -141,8 +179,8 @@ const checkUserIntent = async () => {
         currentIntent.value = intents[0].intent_type;
         localStorage.setItem('intent_completed', 'true');
         intentConfirmed.value = true;
-        // 获取用户列表
-        await fetchUsers();
+        // 获取帖子列表
+        await fetchPosts();
       }
     }
   } catch (error) {
@@ -152,14 +190,14 @@ const checkUserIntent = async () => {
   }
 };
 
-const fetchUsers = async () => {
+const fetchPosts = async () => {
   try {
-    const response = await axios.get('http://localhost:5000/api/users');
+    const response = await axios.get('http://localhost:5000/api/square/posts');
     if (response.data.status === 'success') {
-      users.value = response.data.data.users;
+      posts.value = response.data.data.posts;
     }
   } catch (error) {
-    console.error('获取用户列表失败:', error);
+    console.error('获取帖子列表失败:', error);
   }
 };
 
@@ -170,8 +208,8 @@ const selectIntent = (index) => {
     localStorage.setItem('intent_completed', 'true');
     showIntentConfirm.value = false;
     intentConfirmed.value = true;
-    // 获取用户列表
-    fetchUsers();
+    // 获取帖子列表
+    fetchPosts();
   }
 };
 
@@ -201,24 +239,125 @@ const switchIntent = async () => {
   }
 };
 
-const openChatDialog = (user) => {
-  // 根据用户创建对应的机器人
+const viewPostDetail = (post) => {
+  selectedPost.value = post;
+  intentConfirmed.value = false;
+};
+
+const backToSquare = () => {
+  selectedPost.value = null;
+  intentConfirmed.value = true;
+};
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return date.toLocaleString();
+};
+
+const openChatDialog = (post) => {
+  // 创建会话
+  const user = JSON.parse(localStorage.getItem('user'));
+  if (!user) {
+    alert('请先登录');
+    router.push('/login');
+    return;
+  }
+  
+  // 根据帖子创建对应的机器人
   const userBot = {
-    id: user.id,
-    name: user.name || user.username,
-    description: `基于${user.name || user.username}的画像生成的聊天机器人`,
-    user_id: user.id
+    id: post.id,
+    name: post.username,
+    post_id: post.id,
+    user_id: post.user_id
   };
   selectedBot.value = userBot;
-  messages.value = [];
-  // 添加欢迎消息
-  messages.value.push({ content: `你好！我是${user.name || user.username}的聊天机器人，很高兴认识你！` });
+  
+  // 生成聊天ID
+  const chatId = `chat_${user.id}_${post.id}`;
+  console.log('打开聊天，post.id:', post.id);
+  console.log('打开聊天，selectedBot.id:', selectedBot.value.id);
+  console.log('打开聊天，chatId:', chatId);
+  
+  // 加载聊天历史
+  loadChatHistory(chatId);
+  
+  // 加载好感度
+  loadFavorScore(user.id, post.id);
+  
+  // 获取用户人设提示词
+  axios.get(`http://localhost:5000/api/profile/prompt/${post.user_id}`)
+    .then(response => {
+      if (response.data.status === 'success') {
+        const prompt = response.data.prompt;
+        // 如果没有历史消息，添加欢迎消息
+        if (messages.value.length === 0) {
+          messages.value.push({ content: `你好！我是${post.username}，很高兴认识你！` });
+        }
+      }
+    })
+    .catch(error => {
+      console.error('获取用户人设失败:', error);
+      // 如果没有历史消息，添加默认欢迎消息
+      if (messages.value.length === 0) {
+        messages.value.push({ content: `你好！我是${post.username}，很高兴认识你！` });
+      }
+    });
+};
+
+const loadChatHistory = (chatId) => {
+  console.log('加载聊天历史，chatId:', chatId);
+  axios.get(`http://localhost:5000/api/chat/history/${chatId}`)
+    .then(response => {
+      console.log('加载聊天历史响应:', response.data);
+      if (response.data.status === 'success') {
+        const history = response.data.history || [];
+        console.log('聊天历史数据:', history);
+        if (history.length > 0) {
+          // 确保messages.value被正确赋值
+          const mappedMessages = history.map(msg => ({
+            content: msg.message || '',
+            isUser: msg.sender_type === 'user'
+          }));
+          console.log('转换后的消息:', mappedMessages);
+          messages.value = mappedMessages;
+          console.log('messages.value after assignment:', messages.value);
+        } else {
+          console.log('聊天历史为空');
+          messages.value = [];
+        }
+      } else {
+        console.error('加载聊天历史失败:', response.data.message);
+        messages.value = [];
+      }
+    })
+    .catch(error => {
+      console.error('加载聊天历史失败:', error);
+      messages.value = [];
+    });
+};
+
+const loadFavorScore = (userId, postId) => {
+  // 这里可以从localStorage或后端获取好感度
+  const storedScore = localStorage.getItem(`favor_score_${userId}_${postId}`);
+  if (storedScore) {
+    favorScore.value = parseInt(storedScore);
+  } else {
+    favorScore.value = 0;
+  }
 };
 
 const closeChatDialog = () => {
+  // 保存好感度到localStorage
+  const user = JSON.parse(localStorage.getItem('user'));
+  if (user && selectedBot.value) {
+    localStorage.setItem(`favor_score_${user.id}_${selectedBot.value.id}`, favorScore.value.toString());
+  }
+  
   selectedBot.value = null;
   messages.value = [];
   messageInput.value = '';
+  // 不重置好感度，保持数据持久化
 };
 
 const sendMessage = async () => {
@@ -230,33 +369,77 @@ const sendMessage = async () => {
   messageInput.value = '';
   
   try {
-    // 模拟机器人回复
-    setTimeout(() => {
-      let reply = '';
-      if (userMessage.includes('你好') || userMessage.includes('嗨')) {
-        reply = `你好！很高兴和你聊天！`;
-      } else if (userMessage.includes('名字') || userMessage.includes('叫什么')) {
-        reply = `我叫${selectedBot.value.name}，是一个聊天机器人。`;
-      } else if (userMessage.includes('兴趣') || userMessage.includes('爱好')) {
-        reply = `我的兴趣爱好是${selectedBot.value.description.split('喜欢')[1] || '聊天'}`;
-      } else {
-        reply = `谢谢你的消息，我很喜欢和你聊天！`;
-      }
-      messages.value.push({ content: reply });
-    }, 1000);
-    
-    // 保存聊天记录到后端
+    // 调用后端API获取机器人回复
     const user = JSON.parse(localStorage.getItem('user'));
     if (user) {
-      await axios.post('http://localhost:5000/api/chat', {
-        chat_id: `chat_${user.id}_${selectedBot.value.id}`,
-        sender: user.id,
-        message: userMessage,
-        timestamp: new Date().toISOString()
+      // 获取用户人设提示词
+      const promptResponse = await axios.get(`http://localhost:5000/api/profile/prompt/${selectedBot.value.user_id}`);
+      let prompt = "你是一个聊天机器人";
+      if (promptResponse.data.status === 'success') {
+        prompt = promptResponse.data.prompt;
+      }
+      
+      // 构建消息历史
+      const messageHistory = messages.value.map(msg => ({
+        role: msg.isUser ? "user" : "assistant",
+        content: msg.content
+      }));
+      
+      // 调用大模型API
+      const response = await axios.post('http://localhost:5000/api/llm/chat', {
+        user_id: user.id,
+        messages: [
+          { "role": "system", "content": prompt },
+          ...messageHistory
+        ]
       });
+      
+      if (response.data.status === 'success') {
+        const botReply = response.data.response;
+        messages.value.push({ content: botReply });
+        
+        // 更新好感度
+        favorScore.value = Math.min(100, favorScore.value + 5);
+        
+        // 保存好感度到localStorage
+        localStorage.setItem(`favor_score_${user.id}_${selectedBot.value.id}`, favorScore.value.toString());
+        
+        // 生成聊天ID（与loadChatHistory使用相同的生成逻辑）
+        const chatId = `chat_${user.id}_${selectedBot.value.id}`;
+        console.log('保存聊天记录，chatId:', chatId);
+        console.log('保存聊天记录，user.id:', user.id);
+        console.log('保存聊天记录，selectedBot.value.id:', selectedBot.value.id);
+        
+        // 保存聊天记录到后端
+        try {
+          const userMsgResponse = await axios.post('http://localhost:5000/api/chat', {
+            chat_id: chatId,
+            sender: user.id,
+            message: userMessage,
+            timestamp: new Date().toISOString()
+          });
+          console.log('保存用户消息成功:', userMsgResponse.data);
+          
+          // 保存机器人回复
+          const botMsgResponse = await axios.post('http://localhost:5000/api/chat', {
+            chat_id: chatId,
+            sender: selectedBot.value.id,
+            message: botReply,
+            timestamp: new Date().toISOString(),
+            sender_type: 'bot'
+          });
+          console.log('保存机器人消息成功:', botMsgResponse.data);
+        } catch (error) {
+          console.error('保存聊天记录失败:', error);
+        }
+      }
     }
   } catch (error) {
     console.error('发送消息失败:', error);
+    // 模拟回复
+    setTimeout(() => {
+      messages.value.push({ content: '抱歉，我暂时无法回复，请稍后再试。' });
+    }, 1000);
   }
 };
 
@@ -265,9 +448,16 @@ const sendFriendRequest = async () => {
   if (!user || !selectedBot.value) return;
   
   try {
-    const response = await axios.post('http://localhost:5000/api/friend/request', {
-      sender_id: user.id,
-      receiver_id: selectedBot.value.user_id || selectedBot.value.id
+    // 检查好感度是否达到阈值
+    if (favorScore.value < 50) {
+      alert('好感度不足，需要达到50分才能发送交友申请');
+      return;
+    }
+    
+    const response = await axios.post('http://localhost:5000/api/intent-request/send', {
+      from_user_id: user.id,
+      to_user_id: selectedBot.value.user_id,
+      message: '我对你很感兴趣，希望能成为朋友！'
     });
     
     if (response.data.status === 'success') {
@@ -931,9 +1121,168 @@ const sendFriendRequest = async () => {
 }
 
 .friend-request-btn:hover {
-  background: rgba(249, 115, 22, 0.2);
+    background: rgba(249, 115, 22, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(249, 115, 22, 0.3);
+  }
+
+/* 帖子详情页样式 */
+.post-detail-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+  gap: 20px;
+}
+
+.back-btn {
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.3);
+  color: #333;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(249, 115, 22, 0.3);
+}
+
+.post-detail-content {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+  padding: 30px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.post-detail-author {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.post-detail-author .author-avatar {
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+}
+
+.post-detail-author .author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.post-time {
+  font-size: 14px;
+  color: #666;
+}
+
+.post-detail-body {
+  margin-bottom: 30px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.post-detail-body p {
+  margin-bottom: 20px;
+  font-size: 16px;
+}
+
+.post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.tag {
+  padding: 6px 12px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.post-detail-actions {
+  display: flex;
+  gap: 15px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.chat-btn {
+  background: linear-gradient(45deg, #6a11cb, #2575fc);
+  color: white;
+}
+
+.chat-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 18px rgba(106, 17, 203, 0.4);
+}
+
+.btn-icon {
+  font-size: 18px;
+}
+
+/* 好感度显示样式 */
+.favor-score {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.favor-score span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.favor-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.favor-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f97316, #f59e0b);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* 帖子标签样式 */
+.post-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 @media (max-width: 768px) {
@@ -962,6 +1311,35 @@ const sendFriendRequest = async () => {
   
   .chat-dialog-messages {
     padding: 15px;
+  }
+  
+  .post-detail-content {
+    padding: 20px;
+  }
+  
+  .post-detail-author .author-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+  
+  .post-detail-actions {
+    flex-direction: column;
+  }
+  
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .post-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .post-tags {
+    margin-top: 10px;
   }
 }
 </style>

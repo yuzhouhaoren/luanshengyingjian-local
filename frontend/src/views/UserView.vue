@@ -137,6 +137,28 @@
         <canvas ref="personalityCanvas"></canvas>
       </div>
     </div>
+    
+    <!-- 发布帖子卡片 -->
+    <div class="post-card">
+      <div class="card-header">
+        <h3>发布新帖子</h3>
+      </div>
+      <div class="post-form">
+        <div class="form-group">
+          <label for="post-title">标题</label>
+          <input type="text" id="post-title" v-model="newPost.title" placeholder="请输入帖子标题">
+        </div>
+        <div class="form-group">
+          <label for="post-content">内容</label>
+          <textarea id="post-content" v-model="newPost.content" placeholder="请输入帖子内容"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="post-tags">标签（用逗号分隔）</label>
+          <input type="text" id="post-tags" v-model="newPost.tagsInput" placeholder="例如：户外,爬山,旅行">
+        </div>
+        <button class="btn-publish" @click="publishPost">发布帖子</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -171,6 +193,12 @@ const stats = ref({
   matchCount: 0,
   friendCount: 0,
   postCount: 0
+})
+
+const newPost = ref({
+  title: '',
+  content: '',
+  tagsInput: ''
 })
 
 const hobbiesList = computed(() => {
@@ -225,6 +253,26 @@ const loadUserProfile = async () => {
       ...user.value,
       avatar: defaultAvatar
     }
+  }
+  
+  // 加载用户帖子数量
+  loadUserPostCount()
+}
+
+const loadUserPostCount = async () => {
+  const savedUser = localStorage.getItem('user')
+  if (!savedUser) return
+  
+  const userObj = JSON.parse(savedUser)
+  const userId = userObj.id
+  
+  try {
+    const response = await axios.get(`http://localhost:5000/api/posts/user/${userId}`)
+    if (response.data.status === 'success') {
+      stats.value.postCount = response.data.count
+    }
+  } catch (error) {
+    console.error('加载用户帖子数量失败:', error)
   }
 }
 
@@ -413,6 +461,53 @@ const renderPersonalityChart = () => {
       }
     }
   })
+}
+
+const publishPost = async () => {
+  const savedUser = localStorage.getItem('user')
+  if (!savedUser) {
+    alert('请先登录')
+    return
+  }
+  
+  if (!newPost.value.title || !newPost.value.content) {
+    alert('请填写标题和内容')
+    return
+  }
+  
+  const userObj = JSON.parse(savedUser)
+  const userId = userObj.id
+  
+  // 处理标签
+  const tags = newPost.value.tagsInput
+    ? newPost.value.tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag)
+    : []
+  
+  try {
+    const response = await axios.post('http://localhost:5000/api/posts/publish', {
+      user_id: userId,
+      title: newPost.value.title,
+      content: newPost.value.content,
+      tags: tags
+    })
+    
+    if (response.data.status === 'success') {
+      alert('帖子发布成功！')
+      // 重置表单
+      newPost.value = {
+        title: '',
+        content: '',
+        tagsInput: ''
+      }
+      // 更新帖子数量
+      loadUserPostCount()
+    } else {
+      alert('发布失败：' + (response.data.message || '未知错误'))
+    }
+  } catch (error) {
+    console.error('发布帖子失败:', error)
+    alert('发布失败，请稍后重试')
+  }
 }
 
 onMounted(() => {
@@ -808,6 +903,76 @@ onMounted(() => {
 
 .personality-chart {
   height: 300px;
+}
+
+/* 发布帖子卡片样式 */
+.post-card {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.post-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.post-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.post-form label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748B;
+}
+
+.post-form input,
+.post-form textarea {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(5px);
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.post-form input:focus,
+.post-form textarea:focus {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.post-form textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.btn-publish {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #2563EB, #3B82F6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  align-self: flex-start;
+}
+
+.btn-publish:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
 }
 
 /* 响应式设计 */

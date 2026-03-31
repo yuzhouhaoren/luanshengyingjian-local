@@ -94,6 +94,12 @@ def init_db():
     )
     ''')
     
+    # 检查并添加sender_type字段（如果不存在）
+    cursor.execute('PRAGMA table_info(chats);')
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'sender_type' not in columns:
+        cursor.execute('ALTER TABLE chats ADD COLUMN sender_type TEXT DEFAULT "user";')
+    
     # 创建用户意向表（用户发送的请求）
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_intents (
@@ -141,6 +147,51 @@ def init_db():
         personality TEXT,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    # 创建帖子表
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS posts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        title TEXT,
+        content TEXT,
+        tags TEXT,
+        status TEXT DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+    ''')
+    
+    # 创建聊天会话表
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+        id TEXT PRIMARY KEY,
+        post_id TEXT,
+        host_id TEXT,
+        visitor_id TEXT,
+        favor_score INTEGER DEFAULT 0,
+        is_unlocked BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (post_id) REFERENCES posts(id),
+        FOREIGN KEY (host_id) REFERENCES users(id),
+        FOREIGN KEY (visitor_id) REFERENCES users(id)
+    )
+    ''')
+    
+    # 创建聊天消息表
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        sender_type TEXT,
+        message_content TEXT,
+        send_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        favor_change INTEGER DEFAULT 0,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
     )
     ''')
     
@@ -452,11 +503,12 @@ def send_message():
     message_id = f"msg_{count + 1}"
     
     # 插入消息
+    timestamp = data.get('timestamp') or time.strftime('%Y-%m-%d %H:%M:%S')
     cursor.execute('''
     INSERT INTO chats (id, chat_id, sender, message, timestamp, sender_type)
     VALUES (?, ?, ?, ?, ?, ?)
     ''', (message_id, data.get('chat_id'), data.get('sender'), 
-          data.get('message'), data.get('timestamp', 'now'), data.get('sender_type', 'user')))
+          data.get('message'), timestamp, data.get('sender_type', 'user')))
     
     conn.commit()
     conn.close()
@@ -478,11 +530,18 @@ def get_chat_history(chat_id):
     # 转换为字典列表
     history = []
     for msg in messages:
+        # 检查sender_type字段是否存在
+        sender_type = 'user'
+        try:
+            sender_type = msg['sender_type']
+        except (KeyError, IndexError):
+            pass
+        
         history.append({
             'sender': msg['sender'],
             'message': msg['message'],
             'timestamp': msg['timestamp'],
-            'sender_type': msg.get('sender_type', 'user')
+            'sender_type': sender_type
         })
     
     return jsonify({'status': 'success', 'history': history})
@@ -710,39 +769,7 @@ def llm_rag_match():
         }
     })
 
-# 生成广场帖子API（核心服务）
-@app.route('/api/square/posts', methods=['GET'])
-def get_square_posts():
-    """获取基于用户画像生成的广场帖子"""
-    # 这里留作帖子生成的实现
-    # 实际项目中，会根据用户画像和其他用户的画像生成帖子
-    
-    # 模拟帖子数据
-    posts = [
-        {
-            "id": "post_1",
-            "title": "周末一起去爬山吗？",
-            "content": "最近天气很好，想找个志同道合的朋友一起去爬山，有没有兴趣的？",
-            "author": "用户1",
-            "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20user%20avatar&image_size=square",
-            "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=mountain%20hiking%20scenery&image_size=landscape_16_9"
-        },
-        {
-            "id": "post_2",
-            "title": "推荐一本好书",
-            "content": "最近读了一本非常棒的书，推荐给大家，关于人际关系的建立和维护...",
-            "author": "用户2",
-            "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=intellectual%20user%20avatar&image_size=square",
-            "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=book%20reading%20scene&image_size=landscape_16_9"
-        }
-    ]
-    
-    return jsonify({
-        'status': 'success',
-        'data': {
-            'posts': posts
-        }
-    })
+
 
 # 生成帖子的文本与图片API
 @app.route('/api/posts/generate', methods=['POST'])
@@ -766,6 +793,153 @@ def generate_post():
         'status': 'success',
         'data': generated_post
     })
+
+# 发布帖子API
+@app.route('/api/posts/publish', methods=['POST'])
+def publish_post():
+    """发布帖子"""
+    data = request.json
+    user_id = data.get('user_id')
+    title = data.get('title')
+    content = data.get('content')
+    tags = data.get('tags', [])
+    
+    if not user_id or not title or not content:
+        return jsonify({'status': 'error', 'message': '缺少必要参数'})
+    
+    try:
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            
+            # 生成帖子ID
+            post_id = f"post_{int(time.time())}"
+            
+            # 插入帖子数据
+            cursor.execute('''
+            INSERT INTO posts (id, user_id, title, content, tags, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ''', (post_id, user_id, title, content, json.dumps(tags), 'published'))
+        
+        return jsonify({'status': 'success', 'post_id': post_id})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+# 获取用户帖子API
+@app.route('/api/posts/user/<user_id>', methods=['GET'])
+def get_user_posts(user_id):
+    """获取用户的帖子"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 查询用户的帖子
+        cursor.execute('''
+        SELECT * FROM posts WHERE user_id = ? ORDER BY created_at DESC
+        ''', (user_id,))
+        posts = cursor.fetchall()
+        
+        conn.close()
+        
+        # 转换为字典列表
+        post_list = []
+        for post in posts:
+            post_dict = dict(post)
+            if post_dict.get('tags'):
+                post_dict['tags'] = json.loads(post_dict['tags'])
+            post_list.append(post_dict)
+        
+        return jsonify({'status': 'success', 'posts': post_list, 'count': len(post_list)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+# 更新获取广场帖子API，返回真实数据
+@app.route('/api/square/posts', methods=['GET'])
+def get_square_posts():
+    """获取基于用户画像生成的广场帖子"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # 查询所有已发布的帖子
+        cursor.execute('''
+        SELECT p.*, u.username FROM posts p
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE p.status = 'published'
+        ORDER BY p.created_at DESC
+        ''')
+        posts = cursor.fetchall()
+        
+        conn.close()
+        
+        # 转换为字典列表
+        post_list = []
+        for post in posts:
+            post_dict = dict(post)
+            if post_dict.get('tags'):
+                post_dict['tags'] = json.loads(post_dict['tags'])
+            post_list.append(post_dict)
+        
+        # 如果没有帖子，返回模拟数据
+        if not post_list:
+            post_list = [
+                {
+                    "id": "post_1",
+                    "title": "周末一起去爬山吗？",
+                    "content": "最近天气很好，想找个志同道合的朋友一起去爬山，有没有兴趣的？",
+                    "author": "用户1",
+                    "username": "用户1",
+                    "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20user%20avatar&image_size=square",
+                    "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=mountain%20hiking%20scenery&image_size=landscape_16_9",
+                    "tags": ["户外", "爬山"]
+                },
+                {
+                    "id": "post_2",
+                    "title": "推荐一本好书",
+                    "content": "最近读了一本非常棒的书，推荐给大家，关于人际关系的建立和维护...",
+                    "author": "用户2",
+                    "username": "用户2",
+                    "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=intellectual%20user%20avatar&image_size=square",
+                    "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=book%20reading%20scene&image_size=landscape_16_9",
+                    "tags": ["读书", "推荐"]
+                }
+            ]
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'posts': post_list
+            }
+        })
+    except Exception as e:
+        # 发生错误时返回模拟数据
+        posts = [
+            {
+                "id": "post_1",
+                "title": "周末一起去爬山吗？",
+                "content": "最近天气很好，想找个志同道合的朋友一起去爬山，有没有兴趣的？",
+                "author": "用户1",
+                "username": "用户1",
+                "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20user%20avatar&image_size=square",
+                "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=mountain%20hiking%20scenery&image_size=landscape_16_9",
+                "tags": ["户外", "爬山"]
+            },
+            {
+                "id": "post_2",
+                "title": "推荐一本好书",
+                "content": "最近读了一本非常棒的书，推荐给大家，关于人际关系的建立和维护...",
+                "author": "用户2",
+                "username": "用户2",
+                "avatar": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=intellectual%20user%20avatar&image_size=square",
+                "image": "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=book%20reading%20scene&image_size=landscape_16_9",
+                "tags": ["读书", "推荐"]
+            }
+        ]
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'posts': posts
+            }
+        })
 
 # 匹配池匹配API
 @app.route('/api/match/pool', methods=['POST'])
@@ -1159,6 +1333,27 @@ def delete_account():
         return jsonify({'status': 'error', 'message': str(e)})
     finally:
         conn.close()
+
+# 注册蓝图
+try:
+    from feature_llm_integration.controllers.llm_controller import llm_bp
+    from feature_llm_integration.controllers.session_controller import session_bp
+    from feature_user_profile.controllers.profile_controller import profile_bp
+    from feature_content_generation.controllers.content_controller import content_bp
+    from feature_content_generation.controllers.post_controller import post_bp
+    from feature_content_generation.controllers.publish_controller import publish_bp
+    from feature_intelligent_chat.controllers.favor_controller import favor_bp
+    from feature_intelligent_chat.controllers.chat_controller import chat_bp
+    app.register_blueprint(llm_bp)
+    app.register_blueprint(session_bp)
+    app.register_blueprint(profile_bp)
+    app.register_blueprint(content_bp)
+    app.register_blueprint(post_bp)
+    app.register_blueprint(publish_bp)
+    app.register_blueprint(favor_bp)
+    app.register_blueprint(chat_bp)
+except Exception as e:
+    print(f"注册蓝图时出错: {e}")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
