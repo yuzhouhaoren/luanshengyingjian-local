@@ -9,7 +9,7 @@ import uuid
 
 app = Flask(__name__)
 
-# 启用CORS
+# 启用CORS 跨域资源共享
 CORS(app, origins=['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176']) 
 
 # 数据库配置
@@ -393,7 +393,7 @@ def upload_avatar():
 def serve_avatar(filename):
     return send_from_directory(AVATAR_DIR, filename)
 
-# 获取用户匹配
+# 匹配要用到的api。里面的内容是乱的别管
 @app.route('/api/match/<user_id>', methods=['GET'])
 def get_user_matches(user_id):
     conn = get_db()
@@ -628,87 +628,7 @@ def get_user_intents(user_id):
         }
     })
 
-# 向量匹配算法API（核心服务）
-@app.route('/api/match/vector', methods=['POST'])
-def vector_match():
-    """使用向量匹配算法为用户匹配对象"""
-    data = request.json
-    user_id = data.get('user_id')
-    
-    # 这里留作向量匹配算法的实现
-    # 实际项目中，会根据用户画像和匹配意向计算向量相似度
-    # 并使用LLM+RAG优化匹配结果
-    
-    # 模拟匹配结果
-    matches = [
-        {
-            "id": "user_2",
-            "username": "user2",
-            "name": "用户2",
-            "age": 25,
-            "gender": "女",
-            "location": "北京",
-            "match_score": 0.92
-        },
-        {
-            "id": "user_3",
-            "username": "user3",
-            "name": "用户3",
-            "age": 28,
-            "gender": "男",
-            "location": "上海",
-            "match_score": 0.85
-        }
-    ]
-    
-    return jsonify({
-        'status': 'success',
-        'data': {
-            'matches': matches
-        }
-    })
 
-# LLM+RAG优化API（核心服务）
-@app.route('/api/match/llm-rag', methods=['POST'])
-def llm_rag_match():
-    """使用LLM+RAG优化匹配结果"""
-    data = request.json
-    user_id = data.get('user_id')
-    
-    # 这里留作LLM+RAG优化的实现
-    # 实际项目中，会使用大语言模型和检索增强生成技术
-    # 投入相关的论文和数据，必要时微调大模型
-    
-    # 模拟优化后的匹配结果
-    optimized_matches = [
-        {
-            "id": "user_2",
-            "username": "user2",
-            "name": "用户2",
-            "age": 25,
-            "gender": "女",
-            "location": "北京",
-            "match_score": 0.95,
-            "reason": "你们有相似的兴趣爱好和价值观，聊天风格也很匹配"
-        },
-        {
-            "id": "user_3",
-            "username": "user3",
-            "name": "用户3",
-            "age": 28,
-            "gender": "男",
-            "location": "上海",
-            "match_score": 0.88,
-            "reason": "你们在性格特质上互补，可能会有很好的化学反应"
-        }
-    ]
-    
-    return jsonify({
-        'status': 'success',
-        'data': {
-            'optimized_matches': optimized_matches
-        }
-    })
 
 # 生成广场帖子API（核心服务）
 @app.route('/api/square/posts', methods=['GET'])
