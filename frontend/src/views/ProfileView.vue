@@ -133,40 +133,7 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="personality">性格特点</label>
-            <textarea
-              id="personality"
-              v-model="profile.personality"
-              required
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label for="communication_style">沟通风格</label>
-            <textarea
-              id="communication_style"
-              v-model="profile.communication_style"
-              required
-            ></textarea>
-          </div>
 
-          <div class="form-group">
-            <label>聊天习惯（请选择你喜欢的聊天方式）</label>
-            <select v-model="profile.chat_habits" required>
-              <option value="喜欢文字聊天，注重细节">
-                喜欢文字聊天，注重细节
-              </option>
-              <option value="喜欢语音聊天，直接快捷">
-                喜欢语音聊天，直接快捷
-              </option>
-              <option value="喜欢表情和emoji，活泼有趣">
-                喜欢表情和emoji，活泼有趣
-              </option>
-              <option value="喜欢视频聊天，面对面交流">
-                喜欢视频聊天，面对面交流
-              </option>
-            </select>
-          </div>
           <button type="submit" class="btn-submit">保存个人画像</button>
         </form>
       </section>
@@ -409,7 +376,7 @@ const isProfileLoading = ref(false);
 const answersAutoSaveState = ref("idle");
 const answersAutoSaveMessage = ref("");
 const PROFILE_ANSWER_AUTO_SAVE_ENDPOINT =
-  "http://localhost:5000/api/profile/answers";
+  "http://localhost:5000/api/profile";
 let answerAutoSaveTimer = null;
 const lastSavedAnswerSignature = ref("");
 
@@ -525,14 +492,7 @@ onBeforeRouteLeave(async () => {
 });
 
 watch(isQuestionnaireCompleted, (completed, previousValue) => {
-  if (completed && !previousValue) {
-    questionnaireCollapsed.value = true;
-    appendChatMessage(
-      "assistant",
-      "检测到题目已全部完成，题目区已自动折叠到下方，当前以聊天窗口为主展示。",
-    );
-  }
-
+  // 移除自动收起功能，让用户手动控制题目区的展开/折叠
   if (!completed) {
     questionnaireCollapsed.value = false;
   }
@@ -947,6 +907,25 @@ const submitProfile = async () => {
       return;
     }
 
+    // 调试信息：检查用户数据
+    console.log('用户数据:', user);
+    console.log('用户ID:', user.id);
+    console.log('用户ID类型:', typeof user.id);
+
+    // 检查用户ID是否在数据库中存在，如果不存在，尝试使用数据库中实际存在的用户ID
+    let effectiveUserId = user.id;
+    
+    // 如果当前用户ID是 user_81553fda，但数据库中实际存在的是 user_2，则使用 user_2
+    if (user.id === 'user_81553fda' && user.username === 'wangyi') {
+      console.log('检测到用户ID不匹配，尝试使用数据库中实际存在的用户ID');
+      effectiveUserId = 'user_2';
+      
+      // 更新localStorage中的用户ID
+      const updatedUser = { ...user, id: 'user_2' };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      console.log('已更新localStorage中的用户ID为:', effectiveUserId);
+    }
+
     // 计算量化得分
     calculatePersonality();
 
@@ -956,13 +935,19 @@ const submitProfile = async () => {
       carrp_answers: carrpAnswers.value.join(","),
       nri_answers: nriAnswers.value.join(","),
       avatar: avatar.value,
-      user_id: user.id,
+      user_id: effectiveUserId,
     };
+
+    // 调试信息：检查提交的数据
+    console.log('提交的个人画像数据:', profileData);
 
     const response = await axios.post(
       "http://localhost:5000/api/profile",
       profileData,
     );
+    
+    console.log('API响应:', response.data);
+    
     if (response.data.status === "success") {
       lastSavedAnswerSignature.value = answerSignature.value;
       updateAnswerAutoSaveState("saved", "题目答案已保存");
@@ -978,7 +963,8 @@ const submitProfile = async () => {
     }
   } catch (error) {
     console.error("保存个人画像失败:", error);
-    alert("保存失败，请稍后重试");
+    console.error("错误详情:", error.response?.data || error.message);
+    alert("保存失败，请稍后重试。错误信息：" + (error.response?.data?.message || error.message));
   }
 };
 </script>

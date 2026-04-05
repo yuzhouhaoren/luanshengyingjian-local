@@ -4,19 +4,6 @@
       <h1>匹配池</h1>
       
       <div class="pool-content">
-        <div class="geometry-animation">
-          <div class="polygon-ring ring-1"></div>
-          <div class="polygon-ring ring-2"></div>
-          <div class="polygon-ring ring-3"></div>
-          <div 
-            class="ripple" 
-            v-for="i in 3" 
-            :key="'ripple-'+i"
-            :style="getRippleStyle(i)"
-          ></div>
-          <div class="center-core"></div>
-        </div>
-        
         <div class="countdown-text">
           <p class="countdown-label">距离下一次分配</p>
           <div class="countdown-time">
@@ -74,32 +61,6 @@ const countdown = ref({
 
 const matchResults = ref([])
 let timer = null
-const rippleParams = ref([])
-
-// 初始化波纹参数
-const initRippleParams = () => {
-  rippleParams.value = []
-  for (let i = 0; i < 3; i++) {
-    rippleParams.value.push({
-      scaleX: 0.7 + Math.random() * 0.6, // 0.7-1.3
-      scaleY: 0.7 + Math.random() * 0.6, // 0.7-1.3
-      rotation: Math.random() * 360, // 0-360度
-      animationDelay: i * 1 // 每个波纹延迟1秒
-    })
-  }
-}
-
-// 获取波纹样式
-const getRippleStyle = (index) => {
-  if (!rippleParams.value[index - 1]) return {}
-  const params = rippleParams.value[index - 1]
-  return {
-    '--scale-x': params.scaleX,
-    '--scale-y': params.scaleY,
-    '--rotation': `${params.rotation}deg`,
-    'animation-delay': `${params.animationDelay}s`
-  }
-}
 
 const calculateNextMatch = () => {
   const now = new Date()
@@ -172,7 +133,6 @@ const formatTime = (timestamp) => {
 
 
 onMounted(() => {
-  initRippleParams()
   calculateNextMatch()
   timer = setInterval(calculateNextMatch, 60000)
   fetchMatchResults()
@@ -190,7 +150,11 @@ onUnmounted(() => {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+  position: relative;
+  min-height: 100vh;
 }
+
+
 
 .glass-card {
   background: rgba(255, 255, 255, 0.25);
@@ -199,6 +163,8 @@ onUnmounted(() => {
   padding: 40px;
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
   border: 1px solid rgba(255, 255, 255, 0.18);
+  position: relative;
+  z-index: 5;
 }
 
 h1 {
@@ -215,124 +181,9 @@ h1 {
   margin-bottom: 40px;
 }
 
-.geometric-animation {
-  width: 200px;
-  height: 200px;
-  position: relative;
-  margin-bottom: 30px;
-  overflow: visible;
-}
 
-.polygon-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  animation: ringRotate 8s linear infinite, ringWobble 3s ease-in-out infinite;
-}
 
-.ring-1 {
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  border-top-color: #2563EB;
-  border-right-color: #3B82F6;
-  animation-duration: 8s, 3s;
-}
 
-.ring-2 {
-  width: 75%;
-  height: 75%;
-  top: 12.5%;
-  left: 12.5%;
-  border-bottom-color: #60A5FA;
-  border-left-color: #93C5FD;
-  animation-duration: 6s, 4s;
-  animation-direction: reverse, normal;
-}
-
-.ring-3 {
-  width: 50%;
-  height: 50%;
-  top: 25%;
-  left: 25%;
-  border-top-color: #BFDBFE;
-  border-right-color: #2563EB;
-  animation-duration: 4s, 5s;
-}
-
-.ripple {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid #2563EB;
-  top: 50%;
-  left: 50%;
-  opacity: 0;
-  animation: rippleExpand 3s ease-out infinite;
-  transform: translate(-50%, -50%) rotate(var(--rotation, 0deg)) scaleX(var(--scale-x, 1)) scaleY(var(--scale-y, 1));
-}
-
-@keyframes rippleExpand {
-  0% {
-    width: 0;
-    height: 0;
-    opacity: 0.8;
-    border-width: 2px;
-  }
-  100% {
-    width: 200px;
-    height: 200px;
-    opacity: 0;
-    border-width: 0.5px;
-  }
-}
-
-.center-core {
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, #2563EB 0%, transparent 70%);
-  border-radius: 50%;
-  animation: corePulse 2s ease-in-out infinite;
-}
-
-@keyframes ringRotate {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes ringWobble {
-  0%, 100% {
-    transform: rotate(0deg) translate(0, 0);
-  }
-  25% {
-    transform: rotate(90deg) translate(3px, -3px);
-  }
-  50% {
-    transform: rotate(180deg) translate(-2px, 2px);
-  }
-  75% {
-    transform: rotate(270deg) translate(2px, 3px);
-  }
-}
-
-@keyframes corePulse {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.8;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.5);
-    opacity: 1;
-  }
-}
 
 .countdown-text {
   text-align: center;
