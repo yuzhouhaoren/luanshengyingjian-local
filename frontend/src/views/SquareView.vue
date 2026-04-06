@@ -36,7 +36,7 @@
                 <img :src="getUserAvatar(user)" alt="头像" class="author-avatar">
                 <div class="author-info">
                   <span class="author-name">{{ user.name || user.username }}</span>
-                  <span class="gender-symbol">{{ user.gender === '男' ? '♂' : '♀'  }}</span>
+                  <span class="gender-symbol">{{ user.gender === '男' ? '♂' :( user.gender === '女' ? '♀':'' ) }}</span>
                 </div>
               </div>
             </div>
