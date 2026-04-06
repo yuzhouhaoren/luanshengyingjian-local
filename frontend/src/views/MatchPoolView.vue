@@ -1,6 +1,9 @@
 <template>
   <div class="match-pool-container">
-    <div class="glass-card">
+    <!-- 正十二面体动画 -->
+    <DodecahedronAnimation />
+    
+    
       <h1>匹配池</h1>
       
       <div class="pool-content">
@@ -45,13 +48,14 @@
       <div class="no-results" v-else>
         <p>暂无匹配结果，请等待下一次分配</p>
       </div>
-    </div>
+    
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import DodecahedronAnimation from '../components/DodecahedronAnimation.vue'
 
 const countdown = ref({
   days: 0,
@@ -152,9 +156,8 @@ onUnmounted(() => {
   padding: 20px;
   position: relative;
   min-height: 100vh;
+  overflow: hidden;
 }
-
-
 
 .glass-card {
   background: rgba(255, 255, 255, 0.25);
@@ -164,7 +167,7 @@ onUnmounted(() => {
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
   border: 1px solid rgba(255, 255, 255, 0.18);
   position: relative;
-  z-index: 5;
+  z-index: 10;
 }
 
 h1 {
