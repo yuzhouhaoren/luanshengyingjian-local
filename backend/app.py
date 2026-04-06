@@ -359,13 +359,12 @@ def upload_avatar():
     # 从请求中获取用户ID
     user_id = request.form.get('user_id')
     if not user_id:
-        # 尝试从本地存储获取用户ID（临时解决方案）
-        # 实际项目中应该从认证token中获取
         return jsonify({'status': 'error', 'message': '缺少用户ID'})
     
     try:
-        # 生成头像文件名
-        avatar_filename = f"{user_id}_avatar.{file.filename.rsplit('.', 1)[1].lower()}"
+        # 生成唯一头像文件名，避免文件名冲突
+        file_extension = file.filename.rsplit('.', 1)[1].lower()
+        avatar_filename = f"{user_id}_{int(time.time())}.{file_extension}"
         avatar_path = os.path.join(AVATAR_DIR, avatar_filename)
         
         # 保存头像
@@ -380,10 +379,10 @@ def upload_avatar():
         conn.commit()
         conn.close()
         
-        # 生成头像URL
-        avatar_url = f'/avatars/{avatar_filename}'
+        # 返回完整的头像URL
+        avatar_url = f'http://localhost:5000/avatars/{avatar_filename}'
         
-        return jsonify({'status': 'success', 'avatar_path': avatar_url})
+        return jsonify({'status': 'success', 'avatar_url': avatar_url, 'avatar_filename': avatar_filename})
     except Exception as e:
         print(f"上传头像失败: {e}")
         return jsonify({'status': 'error', 'message': '上传头像失败'})
@@ -756,7 +755,7 @@ def get_users():
     cursor = conn.cursor()
     
     # 查找所有用户
-    cursor.execute('SELECT id, username, name, age, gender, location FROM users')
+    cursor.execute('SELECT id, username, name, age, gender, location, avatar FROM users')
     users = cursor.fetchall()
     
     conn.close()
@@ -765,6 +764,9 @@ def get_users():
     user_list = []
     for user in users:
         user_dict = dict(user)
+        # 如果用户有头像，生成完整的头像URL
+        if user_dict.get('avatar'):
+            user_dict['avatar'] = f'http://localhost:5000/avatars/{user_dict["avatar"]}'
         user_list.append(user_dict)
     
     return jsonify({

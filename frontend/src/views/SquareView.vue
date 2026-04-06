@@ -30,13 +30,13 @@
       <div class="posts-section">
         <h2>广场动态</h2>
         <div class="posts-grid">
-          <div class="post-card" v-for="user in users" :key="user.id" @click="openChatDialog(user)">
+          <div class="post-card" v-for="user in users" :key="user.id">
             <div class="post-header">
               <div class="post-author">
-                <div class="author-avatar">{{ user.name ? user.name.charAt(0) : user.username.charAt(0) }}</div>
+                <img :src="getUserAvatar(user)" alt="头像" class="author-avatar">
                 <div class="author-info">
                   <span class="author-name">{{ user.name || user.username }}</span>
-                  <span class="gender-symbol">{{ user.gender === 'male' ? '♂' : user.gender === 'female' ? '♀' : '⚧' }}</span>
+                  <span class="gender-symbol">{{ user.gender === '男' ? '♂' : '♀'  }}</span>
                 </div>
               </div>
             </div>
@@ -46,7 +46,7 @@
               <img v-if="user.post_image" :src="user.post_image" alt="帖子图片" class="post-image">
             </div>
             <div class="post-footer">
-              <button class="post-action">和Ta聊聊</button>
+              <button class="post-action" @click="openChatDialog(user)">和Ta聊聊</button>
             </div>
           </div>
         </div>
@@ -276,6 +276,21 @@ const sendFriendRequest = async () => {
   } catch (error) {
     console.error('发送交友申请失败:', error);
     alert('发送交友申请失败，请稍后重试');
+  }
+};
+
+// 获取用户头像
+const getUserAvatar = (user) => {
+  // 优先使用用户的真实头像
+  if (user.avatar) {
+    return user.avatar;
+  }
+  
+  // 如果没有头像，使用默认头像
+  if (user.gender === '女') {
+    return 'http://localhost:5000/avatars/女.jpg';
+  } else {
+    return 'http://localhost:5000/avatars/男.jpg';
   }
 };
 </script>

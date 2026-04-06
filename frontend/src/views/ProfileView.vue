@@ -4,6 +4,68 @@
       class="profile-layout"
       :class="{ 'questions-complete': isQuestionnaireCompleted }"
     >
+      <!-- AI聊天区域 - 始终显示在上方 -->
+      <section class="panel chat-panel">
+        <div class="panel-header chat-header">
+          <div>
+            <h2>AI 聊天助手</h2>
+            <p class="panel-subtitle">
+              聊天内容会被采集，用于后续大模型学习数据准备。
+            </p>
+          </div>
+          <span class="chat-state" :class="{ ready: isQuestionnaireCompleted }">
+            {{
+              isQuestionnaireCompleted
+                ? "题目已完成，聊天主展示中"
+                : "请先完成题目，完成后自动切主聊天"
+            }}
+          </span>
+        </div>
+
+        <div class="api-tip">API 占位地址：{{ AI_CHAT_API_ENDPOINT }}</div>
+
+        <div ref="chatMessagesContainer" class="chat-messages">
+          <div
+            v-for="message in chatMessages"
+            :key="message.id"
+            class="message-row"
+            :class="message.role === 'user' ? 'message-user' : 'message-ai'"
+          >
+            <div class="message-bubble">{{ message.content }}</div>
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <input
+            v-model="chatInput"
+            type="text"
+            :disabled="chatSending"
+            placeholder="输入你想告诉 AI 的偏好、边界或聊天习惯..."
+            @keyup.enter="sendChatMessage"
+          />
+          <button
+            type="button"
+            class="btn-chat-send"
+            :disabled="chatSending"
+            @click="sendChatMessage"
+          >
+            {{ chatSending ? "发送中..." : "发送" }}
+          </button>
+        </div>
+
+        <div class="chat-meta">
+          <span>已采集聊天数据：{{ collectedChatRecords.length }} 条</span>
+          <button
+            type="button"
+            class="btn-link"
+            @click="clearCollectedChatData"
+          >
+            清空采集数据
+          </button>
+        </div>
+      </section>
+
+      <!-- 客观题区域 - 始终显示在下方 -->
       <section
         class="panel questionnaire-panel"
         :class="{
@@ -13,7 +75,7 @@
         <div class="panel-header">
           <div>
             <h1>个人画像题目区</h1>
-            <p class="panel-subtitle">在题目全部回答完成前，优先展示此区域。</p>
+            <p class="panel-subtitle">请完成以下题目，帮助系统更好地了解您。</p>
           </div>
           <div class="panel-controls">
             <span class="progress-pill"
@@ -43,7 +105,7 @@
           v-if="isQuestionnaireCompleted && questionnaireCollapsed"
           class="collapsed-tip"
         >
-          题目区已折叠并下移到次要区域，主展示区已切换为 AI 聊天窗口。
+          题目区已折叠，您可以在上方的AI聊天区域继续补充信息。
         </div>
 
         <form
@@ -136,66 +198,6 @@
 
           <button type="submit" class="btn-submit">保存个人画像</button>
         </form>
-      </section>
-
-      <section class="panel chat-panel">
-        <div class="panel-header chat-header">
-          <div>
-            <h2>AI 聊天助手</h2>
-            <p class="panel-subtitle">
-              聊天内容会被采集，用于后续大模型学习数据准备。
-            </p>
-          </div>
-          <span class="chat-state" :class="{ ready: isQuestionnaireCompleted }">
-            {{
-              isQuestionnaireCompleted
-                ? "题目已完成，聊天主展示中"
-                : "请先完成题目，完成后自动切主聊天"
-            }}
-          </span>
-        </div>
-
-        <div class="api-tip">API 占位地址：{{ AI_CHAT_API_ENDPOINT }}</div>
-
-        <div ref="chatMessagesContainer" class="chat-messages">
-          <div
-            v-for="message in chatMessages"
-            :key="message.id"
-            class="message-row"
-            :class="message.role === 'user' ? 'message-user' : 'message-ai'"
-          >
-            <div class="message-bubble">{{ message.content }}</div>
-          </div>
-        </div>
-
-        <div class="chat-input-row">
-          <input
-            v-model="chatInput"
-            type="text"
-            :disabled="chatSending"
-            placeholder="输入你想告诉 AI 的偏好、边界或聊天习惯..."
-            @keyup.enter="sendChatMessage"
-          />
-          <button
-            type="button"
-            class="btn-chat-send"
-            :disabled="chatSending"
-            @click="sendChatMessage"
-          >
-            {{ chatSending ? "发送中..." : "发送" }}
-          </button>
-        </div>
-
-        <div class="chat-meta">
-          <span>已采集聊天数据：{{ collectedChatRecords.length }} 条</span>
-          <button
-            type="button"
-            class="btn-link"
-            @click="clearCollectedChatData"
-          >
-            清空采集数据
-          </button>
-        </div>
       </section>
     </div>
 
@@ -995,19 +997,29 @@ const submitProfile = async () => {
   max-width: 1120px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .panel {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 14px 40px rgba(23, 45, 77, 0.11);
   padding: 24px;
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: all 0.3s ease;
+}
+
+/* AI聊天区域特殊样式 */
+.chat-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(240, 248, 255, 0.3));
+  border: 1px solid rgba(100, 149, 237, 0.2);
+}
+
+/* 客观题区域特殊样式 */
+.questionnaire-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(245, 245, 245, 0.25));
+  border: 1px solid rgba(169, 169, 169, 0.2);
 }
 
 .panel:hover {
@@ -1015,28 +1027,36 @@ const submitProfile = async () => {
   box-shadow: 0 16px 44px rgba(23, 45, 77, 0.16);
 }
 
-.questionnaire-panel {
-  order: 1;
-}
-
+/* AI聊天区域 - 始终在上方，占据更大空间 */
 .chat-panel {
-  order: 2;
-  min-height: 520px;
+  flex: 2;
+  min-height: 400px;
+  order: 1;
   display: flex;
   flex-direction: column;
 }
 
-.questions-complete .chat-panel {
-  order: 1;
-  min-height: 620px;
+/* 客观题区域 - 始终在下方，可折叠 */
+.questionnaire-panel {
+  flex: 1;
+  min-height: 300px;
+  order: 2;
 }
 
-.questions-complete .questionnaire-panel {
-  order: 2;
+/* 当题目完成时，聊天区域可以占据更多空间 */
+.questions-complete .chat-panel {
+  flex: 3;
+  min-height: 500px;
+}
+
+.questions-complete .questionnaire-panel:not(.collapsed) {
+  flex: 1;
 }
 
 .questionnaire-panel.collapsed {
   padding: 20px 24px;
+  max-height: 60px;
+  overflow: hidden;
 }
 
 h1 {

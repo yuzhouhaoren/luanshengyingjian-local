@@ -4,7 +4,7 @@
       <div class="header-top">
         <div class="user-info">
           <div class="avatar-section">
-            <img :src="user.avatar || defaultAvatar" alt="头像" class="avatar">
+            <img :src="user.avatar || getDefaultAvatar(user.gender || '男')" alt="头像" class="avatar">
             <input type="file" id="avatar-upload" class="avatar-upload" @change="handleAvatarUpload">
             <label for="avatar-upload" class="avatar-edit">
               <span>📷</span>
@@ -158,7 +158,14 @@ const user = ref({
   avatar: ''
 })
 
-const defaultAvatar = 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=default%20user%20avatar&image_size=square'
+// 根据性别获取默认头像
+const getDefaultAvatar = (gender) => {
+  if (gender === '女') {
+    return 'http://localhost:5000/avatars/女.jpg'
+  } else {
+    return 'http://localhost:5000/avatars/男.jpg'
+  }
+}
 const showMessages = ref(false)
 const activeTab = ref('matches')
 const matchResults = ref([])
@@ -201,6 +208,15 @@ const loadUserProfile = async () => {
     const response = await axios.get(`http://localhost:5000/api/profile/${userId}`)
     if (response.data.status === 'success' && response.data.profile) {
       const profile = response.data.profile
+      
+      // 优先使用localStorage中的头像（如果存在），否则使用数据库中的头像
+      let avatarUrl = getDefaultAvatar(profile.gender || userObj.gender || '男')
+      if (userObj.avatar) {
+        avatarUrl = userObj.avatar
+      } else if (profile.avatar) {
+        avatarUrl = `http://localhost:5000/avatars/${profile.avatar}`
+      }
+      
       user.value = {
         id: userId,
         username: profile.username || userObj.username || '',
@@ -210,8 +226,8 @@ const loadUserProfile = async () => {
         sexual_orientation: profile.sexual_orientation || '',
         hobbies: profile.hobbies || '',
         personality: profile.personality || '',
-        avatar: profile.avatar ? `http://localhost:5000/avatars/${profile.avatar}` : defaultAvatar,
-        profile_scores: profile.profile_scores ? JSON.parse(profile.profile_scores) : {}
+        avatar: avatarUrl,
+        profile_scores: profile.profile_scores || {}
       }
       
       if (hasPersonalityScores.value) {
@@ -223,7 +239,7 @@ const loadUserProfile = async () => {
     // 即使API调用失败，也保持本地存储的基本信息
     user.value = {
       ...user.value,
-      avatar: defaultAvatar
+      avatar: userObj.avatar || getDefaultAvatar(userObj.gender || '男')
     }
   }
 }
@@ -347,11 +363,19 @@ const handleAvatarUpload = async (event) => {
       })
       
       if (response.data.status === 'success') {
-        user.value.avatar = `http://localhost:5000${response.data.avatar_path}`
+        // 使用后端返回的完整头像URL
+        user.value.avatar = response.data.avatar_url
+        
+        // 更新localStorage中的用户信息
+        const savedUser = JSON.parse(localStorage.getItem('user') || '{}')
+        savedUser.avatar = response.data.avatar_url
+        localStorage.setItem('user', JSON.stringify(savedUser))
+        
         // 触发全局事件，通知App.vue更新头像
         window.dispatchEvent(new CustomEvent('avatar-updated', { 
           detail: { avatar: user.value.avatar } 
         }))
+        
         alert('头像上传成功！')
       } else {
         alert('上传失败：' + (response.data.message || '未知错误'))
