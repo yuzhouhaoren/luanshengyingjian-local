@@ -1171,7 +1171,7 @@ const updateCharts = () => {
 }
 
 .chart-card {
-  padding: 14px;
+  padding: 0px;
   display: flex;
   flex-direction: column;
   flex: 1;

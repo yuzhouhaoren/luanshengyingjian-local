@@ -274,12 +274,12 @@ const loadFriendRequests = async () => {
   const userId = userObj.id
   
   try {
-    const response = await axios.get(`http://localhost:5000/api/friend-requests/${userId}`)
+    const response = await axios.get(`http://localhost:5000/api/intent-requests/${userId}`)
     if (response.data.status === 'success') {
       friendRequests.value = response.data.requests
     }
   } catch (error) {
-    console.error('加载交友申请失败:', error)
+    console.error('加载意向申请失败:', error)
   }
 }
 
@@ -318,21 +318,21 @@ const rejectMatch = async (match) => {
 
 const acceptRequest = async (request) => {
   try {
-    await axios.post('http://localhost:5000/api/friend-request/accept', { request_id: request.id })
+    await axios.post('http://localhost:5000/api/intent-request/accept', { request_id: request.id })
     loadFriendRequests()
     loadNotifications()
   } catch (error) {
-    console.error('接受申请失败:', error)
+    console.error('接受意向申请失败:', error)
   }
 }
 
 const rejectRequest = async (request) => {
   try {
-    await axios.post('http://localhost:5000/api/friend-request/reject', { request_id: request.id })
+    await axios.post('http://localhost:5000/api/intent-request/reject', { request_id: request.id })
     loadFriendRequests()
     loadNotifications()
   } catch (error) {
-    console.error('拒绝申请失败:', error)
+    console.error('拒绝意向申请失败:', error)
   }
 }
 

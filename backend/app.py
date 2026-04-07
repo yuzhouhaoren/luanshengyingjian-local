@@ -346,55 +346,13 @@ def upload_avatar():
 def serve_avatar(filename):
     return send_from_directory(AVATAR_DIR, filename)
 
-# 匹配要用到的api。里面的内容是乱的别管
-@app.route('/api/match/<user_id>', methods=['GET'])
-def get_user_matches(user_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 查找所有用户，排除当前用户
-    cursor.execute('SELECT * FROM users WHERE id != ?', (user_id,))
-    users = cursor.fetchall()
-    
-    conn.close()
-    
-    # 转换为字典列表
-    matches = []
-    for user in users:
-        match = dict(user)
-        if match.get('hobbies'):
-            match['hobbies'] = json.loads(match['hobbies'])
-        matches.append(match)
-    
-    return jsonify({'status': 'success', 'matches': matches})
 
-# 获取聊天广场
-@app.route('/api/chat/square', methods=['GET'])
-def get_chat_square():
-    """获取聊天广场，返回可用的 AI 机器人列表"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 从数据库获取机器人列表
-    cursor.execute('SELECT id, name, avatar FROM bots')
-    bots = cursor.fetchall()
-    
-    conn.close()
-    
-    # 转换为字典列表
-    bot_list = []
-    for bot in bots:
-        bot_list.append({
-            "id": bot['id'],
-            "name": bot['name'],
-            "avatar": bot['avatar']
-        })
-    
-    return jsonify({'status': 'success', 'bots': bot_list})
 
-# 发送聊天消息
-@app.route('/api/chat', methods=['POST'])
-def send_message():
+
+
+# 发送广场聊天消息
+@app.route('/api/square/chat', methods=['POST'])
+def send_square_message():
     data = request.json
     conn = get_db()
     cursor = conn.cursor()

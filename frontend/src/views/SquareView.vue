@@ -248,7 +248,7 @@ const sendMessage = async () => {
     // 保存聊天记录到后端
     const user = JSON.parse(localStorage.getItem('user'));
     if (user) {
-      await axios.post('http://localhost:5000/api/chat', {
+      await axios.post('http://localhost:5000/api/square/chat', {
         chat_id: `chat_${user.id}_${selectedBot.value.id}`,
         sender: user.id,
         message: userMessage,
