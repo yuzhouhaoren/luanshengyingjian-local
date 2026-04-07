@@ -932,6 +932,7 @@ const updateCharts = () => {
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }
@@ -945,7 +946,7 @@ const updateCharts = () => {
 }
 
 .dashboard-container {
-  min-height: 100vh;
+  min-height: 90vh;
   display: flex;
   flex-direction: column;
   padding: 16px;
@@ -1500,7 +1501,7 @@ const updateCharts = () => {
 @media (max-width: 768px) {
   .dashboard-container {
     padding: 15px;
-    gap: 15px;
+    gap: 10px;
   }
   .dashboard-header {
     flex-direction: column;

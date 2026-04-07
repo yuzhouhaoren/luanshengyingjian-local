@@ -286,7 +286,7 @@ const getUserAvatar = (user) => {
   justify-content: center;
   align-items: center;
   padding: 20px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: transparent;
 }
 
 /* 意向确认组件样式 */

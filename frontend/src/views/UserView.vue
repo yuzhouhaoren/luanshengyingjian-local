@@ -27,18 +27,7 @@
       </div>
       
       <div class="user-stats">
-        <div class="stat-item">
-          <span class="stat-value">{{ stats.matchCount }}</span>
-          <span class="stat-label">匹配</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-value">{{ stats.friendCount }}</span>
-          <span class="stat-label">好友</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-value">{{ stats.postCount }}</span>
-          <span class="stat-label">帖子</span>
-        </div>
+        
       </div>
     </div>
     
@@ -121,10 +110,7 @@
             <span v-if="hobbiesList.length === 0" class="info-value">未设置</span>
           </div>
         </div>
-        <div class="info-item full-width">
-          <span class="info-label">性格特点</span>
-          <span class="info-value">{{ user.personality || '未设置' }}</span>
-        </div>
+        
       </div>
     </div>
     

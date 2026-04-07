@@ -104,16 +104,7 @@
             v-model="hobbiesText"
             placeholder="请用逗号分隔多个爱好"
           />
-        </div>
-        <div class="form-group">
-          <label for="personality">性格特点</label>
-          <textarea
-            id="personality"
-            v-model="profile.personality"
-            rows="3"
-            placeholder="请描述你的性格特点"
-          ></textarea>
-        </div>
+        </div>        
         <button type="submit" class="btn-submit">保存个人信息</button>
       </form>
 

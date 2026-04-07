@@ -974,18 +974,7 @@ const submitProfile = async () => {
   justify-content: center;
   align-items: flex-start;
   padding: 28px;
-  background:
-    radial-gradient(
-      circle at 15% 10%,
-      rgba(255, 230, 204, 0.85),
-      rgba(255, 230, 204, 0) 40%
-    ),
-    radial-gradient(
-      circle at 85% 90%,
-      rgba(200, 239, 255, 0.8),
-      rgba(200, 239, 255, 0) 38%
-    ),
-    linear-gradient(145deg, #f8fbff 0%, #eef3f8 45%, #f6f9fc 100%);
+  background: transparent;
 }
 
 .profile-layout {
