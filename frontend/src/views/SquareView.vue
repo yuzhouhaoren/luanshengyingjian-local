@@ -35,13 +35,13 @@
               <div class="post-author">
                 <img :src="getUserAvatar(user)" alt="头像" class="author-avatar">
                 <div class="author-info">
-                  <span class="author-name">{{ user.name || user.username }}</span>
+                  <span class="author-name">{{ user.username }}</span>
                   <span class="gender-symbol">{{ user.gender === '男' ? '♂' :( user.gender === '女' ? '♀':'' ) }}</span>
                 </div>
               </div>
             </div>
             <div class="post-content">
-              <h3>{{ user.name || user.username }}的个人帖子</h3>
+              <h3>{{  user.username }}的个人帖子</h3>
               <p>{{ user.post_content || '点击查看详情并开始聊天' }}</p>
               <img v-if="user.post_image" :src="user.post_image" alt="帖子图片" class="post-image">
             </div>
