@@ -68,11 +68,9 @@ def init_db():
         location TEXT,
         occupation TEXT,
         sexual_orientation TEXT,
-        hobbies TEXT,
-        personality TEXT,
-        communication_style TEXT,
+        
         ideal_partner TEXT,
-        chat_habits TEXT,
+        
         carrp_answers TEXT,
         nri_answers TEXT,
         profile_scores TEXT,
@@ -132,49 +130,6 @@ def init_db():
     )
     ''')
     
-    # 创建 AI 机器人表
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS bots (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        avatar TEXT,
-        personality TEXT,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    # 插入默认 AI 机器人数据
-    cursor.execute('SELECT COUNT(*) FROM bots')
-    if cursor.fetchone()[0] == 0:
-        default_bots = [
-            {
-                'id': 'bot_1',
-                'name': '开心果',
-                'avatar': 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=friendly%20chatbot%20avatar&image_size=square',
-                'personality': '开朗活泼，喜欢讲笑话，总是能让你开心',
-                'description': '一个乐观向上的聊天伙伴，擅长讲笑话和分享有趣的故事'
-            },
-            {
-                'id': 'bot_2',
-                'name': '思考者',
-                'avatar': 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=thoughtful%20chatbot%20avatar&image_size=square',
-                'personality': '深沉思考，善于分析问题，给你理性的建议',
-                'description': '一个善于思考的聊天伙伴，擅长分析问题和提供理性建议'
-            },
-            {
-                'id': 'bot_3',
-                'name': '冒险家',
-                'avatar': 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=adventurous%20chatbot%20avatar&image_size=square',
-                'personality': '热爱冒险，充满好奇心，喜欢探索新事物',
-                'description': '一个充满冒险精神的聊天伙伴，喜欢分享探险故事和新发现'
-            }
-        ]
-        for bot in default_bots:
-            cursor.execute('''
-            INSERT INTO bots (id, name, avatar, personality, description)
-            VALUES (?, ?, ?, ?, ?)
-            ''', (bot['id'], bot['name'], bot['avatar'], bot['personality'], bot['description']))
     
     conn.commit()
     conn.close()
@@ -305,13 +260,12 @@ def submit_profile():
         # 更新用户画像
         cursor.execute('''
         UPDATE users SET age = ?, gender = ?, occupation = ?, sexual_orientation = ?, hobbies = ?, 
-        personality = ?, communication_style = ?, ideal_partner = ?, chat_habits = ?, 
+         ideal_partner = ?, 
         carrp_answers = ?, nri_answers = ?, profile_scores = ?, avatar = ?
         WHERE id = ?
         ''', (data.get('age'), data.get('gender'), data.get('occupation'), data.get('sexual_orientation'),
               data.get('hobbies'), data.get('personality'), 
-              data.get('communication_style'), data.get('ideal_partner'), 
-              data.get('chat_habits'), data.get('carrp_answers'), 
+              
               data.get('nri_answers'), json.dumps(profile_scores), data.get('avatar'), data.get('user_id')))
         
         conn.commit()
@@ -486,56 +440,6 @@ def get_chat_history(chat_id):
     
     return jsonify({'status': 'success', 'history': history})
 
-# 获取所有 AI 机器人
-@app.route('/api/bots', methods=['GET'])
-def get_bots():
-    """获取所有 AI 机器人信息"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 从数据库获取所有机器人
-    cursor.execute('SELECT * FROM bots')
-    bots = cursor.fetchall()
-    
-    conn.close()
-    
-    # 转换为字典列表
-    bot_list = []
-    for bot in bots:
-        bot_list.append({
-            'id': bot['id'],
-            'name': bot['name'],
-            'avatar': bot['avatar'],
-            'personality': bot['personality'],
-            'description': bot['description']
-        })
-    
-    return jsonify({'status': 'success', 'bots': bot_list})
-
-# 获取特定 AI 机器人
-@app.route('/api/bot/<bot_id>', methods=['GET'])
-def get_bot(bot_id):
-    """获取特定 AI 机器人的详细信息"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 从数据库获取指定机器人
-    cursor.execute('SELECT * FROM bots WHERE id = ?', (bot_id,))
-    bot = cursor.fetchone()
-    
-    conn.close()
-    
-    if bot:
-        bot_info = {
-            'id': bot['id'],
-            'name': bot['name'],
-            'avatar': bot['avatar'],
-            'personality': bot['personality'],
-            'description': bot['description']
-        }
-        return jsonify({'status': 'success', 'bot': bot_info})
-    else:
-        return jsonify({'status': 'error', 'message': '机器人不存在'})
 
 # 获取匹配统计数据
 @app.route('/api/stats', methods=['GET'])

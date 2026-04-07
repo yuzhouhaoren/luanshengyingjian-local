@@ -70,7 +70,7 @@
           <button @click="sendMessage">发送</button>
         </div>
         <div class="chat-dialog-footer">
-          <button class="friend-request-btn" @click="sendFriendRequest">发送交友申请</button>
+          
         </div>
       </div>
     </div>
@@ -116,7 +116,7 @@ const checkUserIntent = async () => {
     if (profileResponse.data.status === 'success' && profileResponse.data.profile) {
       const profile = profileResponse.data.profile;
       // 检查个人画像是否完成
-      if (!profile.age || !profile.gender || !profile.occupation || !profile.sexual_orientation || !profile.personality || !profile.communication_style) {
+      if (!profile.age || !profile.gender || !profile.occupation || !profile.sexual_orientation ) {
         alert('请先完成个人画像的填写，然后再访问聊天广场');
         router.push('/profile');
         return;
@@ -200,7 +200,7 @@ const switchIntent = async () => {
     console.error('获取意向列表失败:', error);
   }
 };
-
+/*
 const openChatDialog = (user) => {
   // 根据用户创建对应的机器人
   const userBot = {
@@ -214,13 +214,13 @@ const openChatDialog = (user) => {
   // 添加欢迎消息
   messages.value.push({ content: `你好！我是${user.name || user.username}的聊天机器人，很高兴认识你！` });
 };
-
+*/
 const closeChatDialog = () => {
   selectedBot.value = null;
   messages.value = [];
   messageInput.value = '';
 };
-
+/*
 const sendMessage = async () => {
   if (!messageInput.value.trim() || !selectedBot.value) return;
   
@@ -259,25 +259,7 @@ const sendMessage = async () => {
     console.error('发送消息失败:', error);
   }
 };
-
-const sendFriendRequest = async () => {
-  const user = JSON.parse(localStorage.getItem('user'));
-  if (!user || !selectedBot.value) return;
-  
-  try {
-    const response = await axios.post('http://localhost:5000/api/friend/request', {
-      sender_id: user.id,
-      receiver_id: selectedBot.value.user_id || selectedBot.value.id
-    });
-    
-    if (response.data.status === 'success') {
-      alert('交友申请已发送');
-    }
-  } catch (error) {
-    console.error('发送交友申请失败:', error);
-    alert('发送交友申请失败，请稍后重试');
-  }
-};
+*/
 
 // 获取用户头像
 const getUserAvatar = (user) => {
@@ -289,8 +271,10 @@ const getUserAvatar = (user) => {
   // 如果没有头像，使用默认头像
   if (user.gender === '女') {
     return 'http://localhost:5000/avatars/女.jpg';
-  } else {
+  } else if(user.gender === '男'){
     return 'http://localhost:5000/avatars/男.jpg';
+  }else{
+    return 'http://localhost:5000/avatars/null.png';
   }
 };
 </script>

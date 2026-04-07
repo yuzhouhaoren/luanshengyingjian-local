@@ -267,9 +267,7 @@ const profile = ref({
   gender: "",
   occupation: "",
   sexual_orientation: "",
-  personality: "",
-  communication_style: "",
-  chat_habits: "",
+  
 });
 
 const hobbies = ref([
@@ -804,9 +802,7 @@ const loadProfile = async () => {
       profile.value.gender = profileData.gender || "";
       profile.value.occupation = profileData.occupation || "";
       profile.value.sexual_orientation = profileData.sexual_orientation || "";
-      profile.value.personality = profileData.personality || "";
-      profile.value.communication_style = profileData.communication_style || "";
-      profile.value.chat_habits = profileData.chat_habits || "";
+      
 
       // 处理兴趣爱好
       if (profileData.hobbies) {

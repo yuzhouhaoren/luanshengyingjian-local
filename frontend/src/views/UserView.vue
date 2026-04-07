@@ -162,8 +162,10 @@ const user = ref({
 const getDefaultAvatar = (gender) => {
   if (gender === '女') {
     return 'http://localhost:5000/avatars/女.jpg'
-  } else {
+  } else if(gender==='男'){
     return 'http://localhost:5000/avatars/男.jpg'
+  }else{
+    return 'http://localhost:5000/avatars/null.jpg'
   }
 }
 const showMessages = ref(false)

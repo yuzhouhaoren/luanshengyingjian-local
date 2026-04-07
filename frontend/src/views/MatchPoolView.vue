@@ -68,40 +68,29 @@ let timer = null
 
 const calculateNextMatch = () => {
   const now = new Date()
-  const dayOfWeek = now.getDay()
+  const dayOfWeek = now.getDay() // 0周日,1周一,2周二,3周三,4周四,5周五,6周六
   const hours = now.getHours()
   const minutes = now.getMinutes()
   
   let daysUntilNextMatch = 0
-  let targetDay = 0
   
-  if (dayOfWeek === 2) {
-    if (hours < 0 || (hours === 0 && minutes === 0)) {
-      targetDay = 2
-    } else {
-      targetDay = 5
-    }
-  } else if (dayOfWeek === 5) {
-    if (hours < 0 || (hours === 0 && minutes === 0)) {
-      targetDay = 5
-    } else {
-      targetDay = 2
-      daysUntilNextMatch = 4
-    }
-  } else if (dayOfWeek < 2) {
-    targetDay = 2
+  if (dayOfWeek === 2) { // 周二
+    // 无论几点，下一个匹配日都是本周五（3天后）
+    daysUntilNextMatch = 3
+  } else if (dayOfWeek === 5) { // 周五
+    // 无论几点，下一个匹配日都是下周二（4天后）
+    daysUntilNextMatch = 4
+  } else if (dayOfWeek < 2) { // 周日、周一
     daysUntilNextMatch = 2 - dayOfWeek
-  } else if (dayOfWeek < 5) {
-    targetDay = 5
+  } else if (dayOfWeek < 5) { // 周三、周四
     daysUntilNextMatch = 5 - dayOfWeek
-  } else {
-    targetDay = 2
-    daysUntilNextMatch = 2 + (7 - dayOfWeek)
+  } else { // 周六
+    daysUntilNextMatch = 2 + (7 - dayOfWeek) // 2 + (7-6)=3
   }
   
   const nextMatch = new Date(now)
   nextMatch.setDate(now.getDate() + daysUntilNextMatch)
-  nextMatch.setHours(0, 0, 0, 0)
+  nextMatch.setHours(0, 0, 0, 0) // 目标日的00:00
   
   const diff = nextMatch - now
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
