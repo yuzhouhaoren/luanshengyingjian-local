@@ -124,7 +124,7 @@ const checkUserIntent = async () => {
     }
     
     // 检查用户的匹配意向
-    const response = await axios.get('http://localhost:5000/api/intent/' + user.id);
+    const response = await axios.get('http://localhost:5000/api/matching-intent/' + user.id);
     if (response.data.status === 'success') {
       const intents = response.data.data.intents;
       if (intents.length === 0) {
@@ -186,7 +186,7 @@ const switchIntent = async () => {
   if (!user) return;
   
   try {
-    const response = await axios.get('http://localhost:5000/api/intent/' + user.id);
+    const response = await axios.get('http://localhost:5000/api/matching-intent/' + user.id);
     if (response.data.status === 'success') {
       const intents = response.data.data.intents;
       if (intents.length > 1) {
