@@ -86,7 +86,7 @@ const loadCompletedIntents = async () => {
   if (!user) return;
   
   try {
-    const response = await axios.get('http://localhost:5000/api/intent/' + user.id);
+    const response = await axios.get('http://localhost:5000/api/matching-intent/' + user.id);
     if (response.data.status === 'success') {
       const intents = response.data.data.intents;
       completedIntents.value = intents.map(intent => intent.intent_type);
@@ -116,10 +116,12 @@ const loadQuestions = () => {
         type: 'single',
         options: [
           { value: '5', label: '0小时' },
-          { value: '4', label: '8小时' },
-          { value: '3', label: '16小时' },
-          { value: '2', label: '24小时' },
-          { value: '1', label: '48小时及以上' }
+          { value: '4', label: '0.5小时' },
+          { value: '3.5', label: '1小时' },
+          { value: '3', label: '2小时' },
+          { value: '2', label: '4小时' },
+          { value: '1', label: '12小时及以上' }
+          
         ]
       },
       {
@@ -869,7 +871,7 @@ const loadSavedAnswers = async () => {
   if (!user || !selectedIntent.value) return;
   
   try {
-    const response = await axios.get('http://localhost:5000/api/intent/' + user.id);
+    const response = await axios.get('http://localhost:5000/api/matching-intent/' + user.id);
     if (response.data.status === 'success') {
       const intents = response.data.data.intents;
       const savedIntent = intents.find(intent => intent.intent_type === selectedIntent.value);
@@ -969,9 +971,7 @@ const calculateIntentScores = () => {
     const N = (N1 + N2 + N3 + N4 + N5) / 5;
     scores.N = Math.round(N * 10) / 10;
     
-    // 计算总得分
-    const total = (S + I + R + M + D + E + N) / 7;
-    scores.overall = Math.round(total * 10) / 10;
+    // 匹配意向分数是各维度得分的多维向量，不计算总分
   } else if (selectedIntent.value === '志趣相投的朋友') {
     // 朋友意向的得分计算
     // 维度一：兴趣共鸣 (I)
@@ -1034,9 +1034,7 @@ const calculateIntentScores = () => {
     const G = (G1 + G2 + G3 + G4) / 4;
     scores.G = Math.round(G * 10) / 10;
     
-    // 计算总得分
-    const total = (I + V + P + L + E + G) / 6;
-    scores.overall = Math.round(total * 10) / 10;
+    // 匹配意向分数是各维度得分的多维向量，不计算总分
   }
   
   return scores;
@@ -1050,13 +1048,9 @@ const submitAnswers = async () => {
       return;
     }
     
-    // 计算意向得分
-    const intentScores = calculateIntentScores();
-    
     console.log('用户信息:', user);
     console.log('匹配意向:', selectedIntent.value);
     console.log('答案:', answers.value);
-    console.log('意向得分:', intentScores);
     
     // 处理答案格式，多选题使用|分隔
     const formattedAnswers = answers.value.map(answer => {
@@ -1066,13 +1060,12 @@ const submitAnswers = async () => {
     const intentData = {
       user_id: user.id,
       intent_type: selectedIntent.value,
-      answers: formattedAnswers.join(','),
-      scores: JSON.stringify(intentScores)
+      answers: formattedAnswers.join(',')
     };
     
     console.log('提交的数据:', intentData);
     
-    const response = await axios.post('http://localhost:5000/api/intent', intentData);
+    const response = await axios.post('http://localhost:5000/api/matching-intent', intentData);
     console.log('API响应:', response.data);
     
     if (response.data.status === 'success') {
@@ -1082,7 +1075,20 @@ const submitAnswers = async () => {
       }
       // 保存意向完成状态
       localStorage.setItem('intent_completed', 'true');
-      alert('匹配意向保存成功！');
+      
+      // 显示分数信息
+      const scores = response.data.scores;
+      if (scores && Object.keys(scores).length > 0) {
+        // 构建各维度得分的显示信息
+        let scoreMessage = '匹配意向保存成功！\n您的各维度得分：\n';
+        Object.entries(scores).forEach(([key, value]) => {
+          scoreMessage += `${key}: ${value}分\n`;
+        });
+        alert(scoreMessage);
+      } else {
+        alert('匹配意向保存成功！');
+      }
+      
       // 导航到聊天广场
       router.push('/square');
     } else {
@@ -1106,7 +1112,7 @@ const goToSquare = () => {
   justify-content: center;
   align-items: center;
   padding: 20px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: transparent
 }
 
 .glass-card {
