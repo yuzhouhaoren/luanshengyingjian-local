@@ -285,14 +285,12 @@ def submit_profile():
         
         # 更新用户画像
         cursor.execute('''
-        UPDATE users SET age = ?, gender = ?, occupation = ?, sexual_orientation = ?, hobbies = ?, 
-         ideal_partner = ?, 
+        UPDATE users SET age = ?, gender = ?, occupation = ?, sexual_orientation = ?, 
         carrp_answers = ?, nri_answers = ?, profile_scores = ?, avatar = ?
         WHERE id = ?
         ''', (data.get('age'), data.get('gender'), data.get('occupation'), data.get('sexual_orientation'),
-              data.get('hobbies'), data.get('personality'), 
-              
-              data.get('nri_answers'), json.dumps(profile_scores), data.get('avatar'), data.get('user_id')))
+              data.get('carrp_answers'), data.get('nri_answers'), json.dumps(profile_scores), data.get('avatar'), 
+              data.get('user_id')))
         
         conn.commit()
         conn.close()
