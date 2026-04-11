@@ -18,41 +18,62 @@
     </div>
     
     <!-- 广场帖子 -->
-    <div v-else-if="intentConfirmed" class="glass-card">
-      <div class="square-header">
-        <h1>聊天广场</h1>
-        <div class="current-intent">
-          <span>当前意向：{{ currentIntent }}</span>
-          <button class="btn-switch-intent" @click="switchIntent">切换意向</button>
+    <div v-else-if="intentConfirmed" class="glass-card-wrapper">
+      <div class="glass-card">
+        <div class="square-header">
+          <h1>聊天广场</h1>
+          <div class="current-intent">
+            <span>当前意向：{{ currentIntent }}</span>
+            <button class="btn-switch-intent" @click="switchIntent">切换意向</button>
+          </div>
+        </div>
+        
+        <div class="posts-section">
+          <div class="posts-header">
+            <h2>广场动态</h2>
+            <button class="btn-generate-post" @click="generatePost">生成{{ currentIntent }}帖子</button>
+          </div>
+          <div class="posts-grid">
+            <div v-if="usersWithPosts.length === 0" class="no-posts">
+              <p>当前没有{{ currentIntent }}相关的帖子</p>
+              <p>点击上方按钮生成您的{{ currentIntent }}交友帖子</p>
+            </div>
+            <div 
+              class="post-card" 
+              v-for="user in usersWithPosts" 
+              :key="user.id"
+              @mouseenter="showChatButton(user, $event)"
+              @mouseleave="hideChatButton"
+              @click="openChatDialog(user)"
+            >
+              <div class="post-header">
+                <div class="post-author">
+                  <img :src="getUserAvatar(user)" alt="头像" class="author-avatar" @click.stop="openChatDialog(user)">
+                  <div class="author-info">
+                    <span class="author-name">{{ user.username }}</span>
+                    <span class="gender-symbol">{{ user.gender === '男' ? '♂' :( user.gender === '女' ? '♀':'' ) }}</span>
+                    <span class="post-intent-tag">{{ user.post_intent_type }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="post-content">
+                <h3>{{ user.username }}的{{ currentIntent }}交友帖</h3>
+                <p>{{ user.post_content }}</p>
+                <img v-if="user.post_image" :src="user.post_image" alt="帖子图片" class="post-image">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
-      <div class="posts-section">
-        <h2>广场动态</h2>
-        <div class="posts-grid">
-          <div v-if="usersWithPosts.length === 0" class="no-posts">
-            <p>当前没有帖子，点击个人画像页面的生成按钮创建帖子</p>
-          </div>
-          <div class="post-card" v-for="user in usersWithPosts" :key="user.id">
-            <div class="post-header">
-              <div class="post-author">
-                <img :src="getUserAvatar(user)" alt="头像" class="author-avatar" @click="openChatDialog(user)">
-                <div class="author-info">
-                  <span class="author-name">{{ user.username }}</span>
-                  <span class="gender-symbol">{{ user.gender === '男' ? '♂' :( user.gender === '女' ? '♀':'' ) }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="post-content">
-              <h3>{{  user.username }}的个人帖子</h3>
-              <p>{{ user.post_content }}</p>
-              <img v-if="user.post_image" :src="user.post_image" alt="帖子图片" class="post-image">
-            </div>
-            <div class="post-footer">
-              <button class="post-action" @click="openChatDialog(user)">和Ta聊聊</button>
-            </div>
-          </div>
-        </div>
+      <!-- 外部悬浮聊天按钮 -->
+      <div 
+        v-if="hoveredUser" 
+        class="floating-chat-btn"
+        :style="floatingBtnStyle"
+        @click="openChatDialog(hoveredUser)"
+      >
+        和Ta聊聊
       </div>
     </div>
     
@@ -89,7 +110,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
@@ -106,6 +127,8 @@ const favorability = ref(0);
 const favorabilityLevel = ref('陌生冷淡期');
 const unlockContact = ref(false);
 const contactEmail = ref('');
+const hoveredUser = ref(null);
+const floatingBtnStyle = ref({});
 
 // 过滤出有帖子的用户
 const usersWithPosts = computed(() => {
@@ -120,6 +143,14 @@ const initCurrentIntent = () => {
 onMounted(async () => {
   // 检查用户的匹配意向
   await checkUserIntent();
+  
+  // 添加滚动事件监听
+  window.addEventListener('scroll', handleScroll, { passive: true });
+});
+
+onUnmounted(() => {
+  // 移除滚动事件监听
+  window.removeEventListener('scroll', handleScroll);
 });
 
 const checkUserIntent = async () => {
@@ -174,7 +205,12 @@ const checkUserIntent = async () => {
 
 const fetchUsers = async () => {
   try {
-    const response = await axios.get('http://localhost:5000/api/users');
+    // 根据当前意向类型获取用户列表
+    const response = await axios.get('http://localhost:5000/api/users', {
+      params: {
+        intent_type: currentIntent.value
+      }
+    });
     if (response.data.status === 'success') {
       users.value = response.data.data.users;
     }
@@ -325,6 +361,90 @@ const sendMessage = async () => {
     messages.value.push({ content: '抱歉，我暂时无法回复，请稍后再试。' });
   }
 };
+
+// 生成帖子
+const generatePost = async () => {
+  const user = JSON.parse(localStorage.getItem('user'));
+  if (!user) {
+    router.push('/login');
+    return;
+  }
+  
+  try {
+    alert(`正在生成${currentIntent.value}帖子，请稍候...`);
+    
+    const response = await axios.post('http://localhost:5000/api/llm/generate-post', {
+      user_id: user.id,
+      intent_type: currentIntent.value
+    });
+    
+    if (response.data.status === 'success') {
+      const postContent = response.data.data.post_content;
+      
+      // 保存帖子到数据库
+      await axios.post('http://localhost:5000/api/user-posts', {
+        user_id: user.id,
+        intent_type: currentIntent.value,
+        title: `${currentIntent.value}交友帖`,
+        content: postContent
+      });
+      
+      alert(`${currentIntent.value}帖子生成成功！`);
+      // 刷新用户列表
+      await fetchUsers();
+    } else {
+      alert(`生成帖子失败：${response.data.message}`);
+    }
+  } catch (error) {
+    console.error('生成帖子失败:', error);
+    alert('生成帖子失败，请稍后重试。');
+  }
+};
+
+// 当前悬停的帖子元素
+let currentHoveredElement = null;
+
+// 更新悬浮按钮位置
+const updateFloatingBtnPosition = () => {
+  if (hoveredUser.value && currentHoveredElement) {
+    const rect = currentHoveredElement.getBoundingClientRect();
+    floatingBtnStyle.value = {
+      top: `${rect.top + rect.height / 2 - 20}px`,
+      left: `${rect.right + 50}px`
+    };
+  }
+};
+
+// 显示悬浮聊天按钮
+const showChatButton = (user, event) => {
+  hoveredUser.value = user;
+  currentHoveredElement = event.currentTarget;
+  updateFloatingBtnPosition();
+};
+
+// 隐藏悬浮聊天按钮
+const hideChatButton = () => {
+  hoveredUser.value = null;
+  currentHoveredElement = null;
+};
+
+// 防抖函数
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
+
+// 滚动事件处理（带防抖）
+const handleScroll = debounce(() => {
+  updateFloatingBtnPosition();
+}, 10);
 
 // 获取用户头像
 const getUserAvatar = (user) => {
@@ -481,6 +601,13 @@ const getUserAvatar = (user) => {
   }
 }
 
+.glass-card-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .glass-card {
   background: rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(10px);
@@ -489,7 +616,7 @@ const getUserAvatar = (user) => {
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
   border: 1px solid rgba(255, 255, 255, 0.18);
   width: 100%;
-  max-width: 1000px;
+  max-width: 700px;
   min-height: 800px;
 }
 
@@ -546,15 +673,49 @@ const getUserAvatar = (user) => {
   margin-bottom: 40px;
 }
 
-.posts-section h2 {
+.posts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
+}
+
+.posts-header h2 {
+  margin-bottom: 0;
   color: #333;
   font-size: 20px;
 }
 
+.btn-generate-post {
+  padding: 10px 20px;
+  background: linear-gradient(45deg, #6a11cb, #2575fc);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(106, 17, 203, 0.3);
+}
+
+.btn-generate-post:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(106, 17, 203, 0.4);
+}
+
+.post-intent-tag {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .posts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
   gap: 20px;
 }
 
@@ -636,32 +797,9 @@ const getUserAvatar = (user) => {
 }
 
 .post-content p {
-  margin: 0 0 15px 0;
+  margin: 0;
   color: #666;
   line-height: 1.5;
-}
-
-.post-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.post-action {
-  padding: 8px 16px;
-  background: rgba(37, 99, 235, 0.1);
-  color: #2563EB;
-  border: 1px solid rgba(37, 99, 235, 0.3);
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.post-action:hover {
-  background: rgba(37, 99, 235, 0.2);
-  transform: translateY(-2px);
 }
 
 .no-posts {
@@ -674,6 +812,40 @@ const getUserAvatar = (user) => {
   color: #50617a;
   font-size: 16px;
   margin-top: 20px;
+}
+
+/* 悬浮聊天按钮 */
+.floating-chat-btn {
+  position: fixed;
+  padding: 12px 24px;
+  background: linear-gradient(45deg, #6a11cb, #2575fc);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(106, 17, 203, 0.4);
+  z-index: 100;
+  white-space: nowrap;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.floating-chat-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(106, 17, 203, 0.5);
 }
 
 /* 响应式设计 */
@@ -730,19 +902,6 @@ const getUserAvatar = (user) => {
   }
   
   .post-content p {
-    font-size: 14px;
-  }
-  
-  .post-stats {
-    gap: 15px;
-  }
-  
-  .stat-item {
-    font-size: 14px;
-  }
-  
-  .post-action {
-    padding: 8px 16px;
     font-size: 14px;
   }
   
@@ -815,19 +974,6 @@ const getUserAvatar = (user) => {
   }
   
   .post-content p {
-    font-size: 13px;
-  }
-  
-  .post-stats {
-    gap: 10px;
-  }
-  
-  .stat-item {
-    font-size: 13px;
-  }
-  
-  .post-action {
-    padding: 6px 12px;
     font-size: 13px;
   }
   

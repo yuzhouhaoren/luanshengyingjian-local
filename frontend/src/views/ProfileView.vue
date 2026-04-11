@@ -10,19 +10,26 @@
           <div>
             <h2>AI 聊天助手</h2>
             <p class="panel-subtitle">
-              聊天内容会被采集，用于后续大模型学习数据准备。
+              完成题目后，您可以与AI聊天，帮助系统更好地了解您。
             </p>
           </div>
           <span class="chat-state" :class="{ ready: isQuestionnaireCompleted }">
             {{
               isQuestionnaireCompleted
-                ? "题目已完成，聊天主展示中"
-                : "请先完成题目，完成后自动切主聊天"
+                ? "题目已完成，可以开始聊天"
+                : "请先完成题目"
             }}
           </span>
         </div>
 
-        <div class="api-tip">API 占位地址：{{ AI_CHAT_API_ENDPOINT }}</div>
+        <!-- 聊天限制提示 -->
+        <div
+          v-if="!isQuestionnaireCompleted"
+          class="chat-restriction-tip"
+        >
+          <span class="restriction-icon">*</span>
+          <span>请先完成下方的个人画像题目，完成后即可与AI聊天。</span>
+        </div>
 
         <div ref="chatMessagesContainer" class="chat-messages">
           <div
@@ -33,20 +40,49 @@
           >
             <div class="message-bubble">{{ message.content }}</div>
           </div>
+          <!-- 问卷未完成时的遮罩层 -->
+          <div
+            v-if="!isQuestionnaireCompleted"
+            class="chat-disabled-overlay"
+          >
+            <div class="overlay-content">
+              <div class="overlay-icon">
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M12 20v-8M12 4v.01M21 12h-1M4 12H3m3.682-5.682a4 4 0 0 1 5.656 0M16.318 18.318a4 4 0 0 0 5.656 0M16.318 5.682a4 4 0 0 0-5.656 0M4.682 18.318a4 4 0 0 1 5.656 0"
+                  ></path>
+                </svg>
+              </div>
+              <p>完成题目后即可开始聊天</p>
+            </div>
+          </div>
         </div>
 
         <div class="chat-input-row">
           <input
             v-model="chatInput"
             type="text"
-            :disabled="chatSending"
-            placeholder="输入你想告诉 AI 的偏好、边界或聊天习惯..."
+            :disabled="chatSending || !isQuestionnaireCompleted"
+            :placeholder="
+              isQuestionnaireCompleted
+                ? '输入您的聊天偏好、边界或聊天习惯...'
+                : '请先完成个人画像题目'
+            "
             @keyup.enter="sendChatMessage"
           />
           <button
             type="button"
             class="btn-chat-send"
-            :disabled="chatSending"
+            :disabled="chatSending || !isQuestionnaireCompleted"
             @click="sendChatMessage"
           >
             {{ chatSending ? "发送中..." : "发送" }}
@@ -54,20 +90,6 @@
         </div>
 
         <div class="chat-actions">
-          <button
-            type="button"
-            class="btn-link"
-            @click="generatePost('伴侣')"
-          >
-            生成伴侣帖子
-          </button>
-          <button
-            type="button"
-            class="btn-link"
-            @click="generatePost('志趣相投的朋友')"
-          >
-            生成朋友帖子
-          </button>
           <button
             type="button"
             class="btn-link"
@@ -479,8 +501,9 @@ const personalityAnalysis = ref({
   narcissism: 0, // 自恋程度
 });
 
-onMounted(() => {
-  loadProfile();
+onMounted(async () => {
+  await loadProfile();
+  await loadChatHistoryFromDB();
   loadCollectedChatData();
 
   if (typeof window !== "undefined") {
@@ -773,6 +796,32 @@ const requestAiReply = async (userMessage) => {
   }
 };
 
+const saveChatHistoryToDB = async () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user) {
+      return;
+    }
+
+    const messages = chatMessages.value.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.createdAt
+    }));
+
+    await axios.post("http://localhost:5000/api/ai-chat-history", {
+      user_id: user.id,
+      matched_user_id: "ai_assistant",
+      chat_id: conversationId,
+      messages: messages,
+      favorability: 50
+    });
+  } catch (error) {
+    console.error("保存聊天历史到数据库失败:", error);
+  }
+};
+
 const sendChatMessage = async () => {
   const content = chatInput.value.trim();
   if (!content || chatSending.value) {
@@ -786,6 +835,8 @@ const sendChatMessage = async () => {
   try {
     const aiReply = await requestAiReply(content);
     appendChatMessage("assistant", aiReply);
+    // 保存聊天历史到数据库
+    await saveChatHistoryToDB();
   } catch (error) {
     console.error("AI 回复失败:", error);
     appendChatMessage(
@@ -803,44 +854,31 @@ const clearCollectedChatData = () => {
   appendChatMessage("assistant", "已清空当前浏览器中的聊天采集数据。", false);
 };
 
-const generatePost = async (intentType) => {
+const loadChatHistoryFromDB = async () => {
   try {
     const user = JSON.parse(localStorage.getItem("user"));
     if (!user) {
-      router.push("/login");
       return;
     }
 
-    appendChatMessage("assistant", `正在生成${intentType}帖子...`, false);
-
-    const response = await axios.post(
-      "http://localhost:5000/api/llm/generate-post",
-      {
-        user_id: user.id,
-        intent_type: intentType
-      }
+    const response = await axios.get(
+      `http://localhost:5000/api/ai-chat-history/${conversationId}`
     );
 
-    if (response.data.status === "success") {
-      const postContent = response.data.data.post_content;
-      appendChatMessage("assistant", `生成${intentType}帖子完成`, false);
-      
-      // 保存帖子到数据库
-      await axios.post(
-        "http://localhost:5000/api/user-posts",
-        {
-          user_id: user.id,
-          intent_type: intentType,
-          title: `${intentType}交友帖`,
-          content: postContent
-        }
-      );
-    } else {
-      appendChatMessage("assistant", `生成帖子失败：${response.data.message}`, false);
+    if (response.data.status === "success" && response.data.data) {
+      const historyData = response.data.data;
+      if (historyData.messages && historyData.messages.length > 0) {
+        // 清空默认消息，加载历史记录
+        chatMessages.value = historyData.messages.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt
+        }));
+      }
     }
   } catch (error) {
-    console.error("生成帖子失败:", error);
-    appendChatMessage("assistant", "生成帖子失败，请稍后重试。", false);
+    console.error("加载聊天历史失败:", error);
   }
 };
 
@@ -1308,14 +1346,61 @@ textarea {
   background: rgba(53, 173, 114, 0.14);
 }
 
-.api-tip {
+/* 聊天限制提示 */
+.chat-restriction-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
-  font-size: 12px;
-  color: #4f6684;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(227, 236, 248, 0.76);
-  border: 1px dashed rgba(100, 125, 156, 0.4);
+  background: rgba(245, 222, 179, 0.6);
+  border: 1px solid rgba(218, 165, 32, 0.35);
+  color: #8b6914;
+  font-size: 14px;
+}
+
+.restriction-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(218, 165, 32, 0.2);
+  font-weight: bold;
+  font-size: 12px;
+}
+
+/* 聊天禁用遮罩层 */
+.chat-disabled-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(3px);
+  border-radius: 14px;
+  z-index: 10;
+}
+
+.overlay-content {
+  text-align: center;
+  color: #8895a8;
+}
+
+.overlay-icon {
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.overlay-content p {
+  margin: 0;
+  font-size: 14px;
 }
 
 .chat-messages {
@@ -1331,6 +1416,7 @@ textarea {
     rgba(236, 245, 252, 0.96)
   );
   padding: 14px;
+  position: relative;
 }
 
 .message-row {

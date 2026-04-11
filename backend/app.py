@@ -987,9 +987,12 @@ def match_pool():
 # 获取用户列表API
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    """获取所有用户列表"""
+    """获取用户列表（支持按意向类型过滤）"""
     conn = get_db()
     cursor = conn.cursor()
+    
+    # 获取查询参数
+    intent_type = request.args.get('intent_type')
     
     # 查找所有用户
     cursor.execute('SELECT id, username, name, age, gender, location, avatar FROM users')
@@ -1003,12 +1006,18 @@ def get_users():
         if user_dict.get('avatar'):
             user_dict['avatar'] = f'http://localhost:5000/avatars/{user_dict["avatar"]}'
         
-        # 获取用户的帖子内容
-        cursor.execute('SELECT content, image FROM user_posts WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', (user_dict['id'],))
+        # 根据意向类型获取用户的帖子内容
+        if intent_type:
+            # 按意向类型筛选帖子
+            cursor.execute('SELECT content, image, intent_type FROM user_posts WHERE user_id = ? AND intent_type = ? ORDER BY created_at DESC LIMIT 1', (user_dict['id'], intent_type))
+        else:
+            cursor.execute('SELECT content, image, intent_type FROM user_posts WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', (user_dict['id'],))
+        
         post = cursor.fetchone()
         if post:
             user_dict['post_content'] = post['content']
             user_dict['post_image'] = post['image']
+            user_dict['post_intent_type'] = post['intent_type']
         user_list.append(user_dict)
     
     conn.close()
@@ -1327,6 +1336,31 @@ def delete_account():
         conn.close()
 
 # 大模型生成帖子
+def get_user_chat_history(user_id):
+    """获取用户与AI助手的聊天历史记录"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 查询该用户与AI助手的所有聊天记录
+    cursor.execute('SELECT messages FROM ai_chat_history WHERE user_id = ? AND matched_user_id = ?', 
+                  (user_id, 'ai_assistant'))
+    
+    history = cursor.fetchall()
+    conn.close()
+    
+    all_messages = []
+    for record in history:
+        try:
+            messages = json.loads(record['messages'])
+            all_messages.extend(messages)
+        except:
+            continue
+    
+    # 按时间排序
+    all_messages.sort(key=lambda x: x.get('createdAt', ''))
+    
+    return all_messages
+
 @app.route('/api/llm/generate-post', methods=['POST'])
 def generate_post():
     """使用大模型生成交友帖子"""
@@ -1343,7 +1377,10 @@ def generate_post():
     if not user:
         return jsonify({'status': 'error', 'message': '用户不存在'})
     
-    # 构建用户画像
+    # 获取用户与AI助手的聊天历史
+    chat_history = get_user_chat_history(user_id)
+    
+    # 构建用户画像（包含聊天历史）
     user_profile = {
         'username': user['username'],
         'age': user['age'],
@@ -1351,10 +1388,11 @@ def generate_post():
         'occupation': user['occupation'],
         'hobbies': user['hobbies'] if user['hobbies'] else '',
         'personality': user['personality'] if user['personality'] else '',
-        'profile_scores': json.loads(user['profile_scores'] if user['profile_scores'] else '{}')
+        'profile_scores': json.loads(user['profile_scores'] if user['profile_scores'] else '{}'),
+        'chat_history': chat_history  # 添加聊天历史
     }
     
-    # 生成帖子
+    # 生成帖子（大模型会基于聊天历史分析用户性格和风格）
     post_content = llm.generate_post(user_profile, intent_type)
     
     return jsonify({
@@ -1391,7 +1429,8 @@ def generate_chat():
             'occupation': 'AI助手',
             'hobbies': '聊天,帮助用户',
             'personality': '友好,乐于助人',
-            'profile_scores': {}
+            'profile_scores': {},
+            'chat_history': []
         }
     else:
         # 从缓存或数据库获取真实用户信息
@@ -1401,7 +1440,10 @@ def generate_chat():
             conn.close()
             return jsonify({'status': 'error', 'message': '匹配用户不存在'})
         
-        # 构建用户画像
+        # 获取该用户与AI助手的聊天历史（用于分析聊天风格和性格）
+        user_chat_history = get_user_chat_history(matched_user_id)
+        
+        # 构建用户画像（包含聊天历史）
         user_profile = {
             'username': matched_user['username'],
             'age': matched_user['age'],
@@ -1409,7 +1451,8 @@ def generate_chat():
             'occupation': matched_user['occupation'],
             'hobbies': matched_user['hobbies'] if matched_user['hobbies'] else '',
             'personality': matched_user['personality'] if matched_user['personality'] else '',
-            'profile_scores': json.loads(matched_user['profile_scores'] if matched_user['profile_scores'] else '{}')
+            'profile_scores': json.loads(matched_user['profile_scores'] if matched_user['profile_scores'] else '{}'),
+            'chat_history': user_chat_history  # 添加聊天历史用于分析
         }
     
     # 计算好感度变化
@@ -1421,8 +1464,8 @@ def generate_chat():
     # 检查是否解锁联系信息
     unlock_contact = favorability_system.should_unlock_contact(new_favorability)
     
-    # 使用RAG系统生成回复
-    response = rag_system.generate_response_with_rag(matched_user_id, user_message, chat_history, conn)
+    # 使用RAG系统生成回复（传入用户画像，包含聊天历史）
+    response = rag_system.generate_response_with_rag(matched_user_id, user_message, chat_history, conn, user_profile)
     
     # 更新用户数据显示
     rag_system.update_user_data_display(matched_user_id, conn)
