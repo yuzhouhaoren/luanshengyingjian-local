@@ -1096,10 +1096,10 @@ def get_matches(user_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT mr.*, u.name as matched_user_name
+        SELECT mr.*, u.name as matched_user_name, u.avatar, u.gender
         FROM match_results mr
         LEFT JOIN users u ON mr.matched_user_id = u.id
-        WHERE mr.user_id = ? AND mr.status = 'pending'
+        WHERE mr.user_id = ? AND mr.status IN ('pending', 'read', 'accepted')
         ORDER BY mr.created_at DESC
     ''', (user_id,))
     
@@ -1109,6 +1109,8 @@ def get_matches(user_id):
     match_list = []
     for match in matches:
         match_dict = dict(match)
+        if match_dict.get('avatar'):
+            match_dict['avatar'] = f'http://localhost:5000/avatars/{match_dict["avatar"]}'
         match_list.append(match_dict)
     
     return jsonify({
@@ -1192,9 +1194,11 @@ def get_intent_requests(user_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT * FROM received_friend_requests
-        WHERE to_user_id = ? AND status = 'pending'
-        ORDER BY created_at DESC
+        SELECT rfr.*, u.name as from_user_name, u.avatar, u.gender
+        FROM received_friend_requests rfr
+        LEFT JOIN users u ON rfr.from_user_id = u.id
+        WHERE rfr.to_user_id = ? AND rfr.status IN ('pending', 'read', 'accepted', 'rejected')
+        ORDER BY rfr.created_at DESC
     ''', (user_id,))
     
     requests = cursor.fetchall()
@@ -1203,6 +1207,8 @@ def get_intent_requests(user_id):
     request_list = []
     for req in requests:
         req_dict = dict(req)
+        if req_dict.get('avatar'):
+            req_dict['avatar'] = f'http://localhost:5000/avatars/{req_dict["avatar"]}'
         request_list.append(req_dict)
     
     return jsonify({
@@ -1304,6 +1310,24 @@ def get_notifications(user_id):
             'total': match_count + request_count
         }
     })
+
+# 标记消息为已读
+@app.route('/api/notifications/read/<user_id>', methods=['POST'])
+def mark_notifications_read(user_id):
+    """标记用户的所有未读消息为已读"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 更新匹配结果状态为已读
+    cursor.execute('UPDATE match_results SET status = ? WHERE user_id = ? AND status = ?', ('read', user_id, 'pending'))
+    
+    # 更新交友申请状态为已读
+    cursor.execute('UPDATE received_friend_requests SET status = ? WHERE to_user_id = ? AND status = ?', ('read', user_id, 'pending'))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'status': 'success', 'message': '消息已标记为已读'})
 
 # 注销账号
 @app.route('/api/account/delete', methods=['POST'])

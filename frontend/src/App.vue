@@ -511,6 +511,12 @@ onMounted(() => {
   window.addEventListener("avatar-updated", (event) => {
     userAvatar.value = event.detail.avatar;
   });
+  
+  // 监听消息已读事件，清除导航栏小红点
+  window.addEventListener("notifications-read", () => {
+    notificationCount.value = 0;
+  });
+  
   window.addEventListener("scroll", handleScroll);
 });
 
@@ -520,6 +526,7 @@ onUnmounted(() => {
   }
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("avatar-updated", () => {});
+  window.removeEventListener("notifications-read", () => {});
   window.removeEventListener("scroll", handleScroll);
 });
 
