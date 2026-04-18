@@ -23,10 +23,7 @@
         </div>
 
         <!-- 聊天限制提示 -->
-        <div
-          v-if="!isQuestionnaireCompleted"
-          class="chat-restriction-tip"
-        >
+        <div v-if="!isQuestionnaireCompleted" class="chat-restriction-tip">
           <span class="restriction-icon">*</span>
           <span>请先完成下方的个人画像题目，完成后即可与AI聊天。</span>
         </div>
@@ -41,10 +38,7 @@
             <div class="message-bubble">{{ message.content }}</div>
           </div>
           <!-- 问卷未完成时的遮罩层 -->
-          <div
-            v-if="!isQuestionnaireCompleted"
-            class="chat-disabled-overlay"
-          >
+          <div v-if="!isQuestionnaireCompleted" class="chat-disabled-overlay">
             <div class="overlay-content">
               <div class="overlay-icon">
                 <svg
@@ -92,11 +86,47 @@
         <div class="chat-actions">
           <button
             type="button"
+            class="btn-link btn-link-warning"
+            :disabled="chatSending"
+            @click="startNewChatSession"
+          >
+            新建会话
+          </button>
+          <button
+            type="button"
             class="btn-link"
             @click="clearCollectedChatData"
           >
             清空采集数据
           </button>
+        </div>
+
+        <div v-if="recentChatSessions.length > 0" class="recent-sessions">
+          <div class="recent-sessions-header">
+            <span>最近会话</span>
+            <span class="session-count"
+              >{{ recentChatSessions.length }} 条</span
+            >
+          </div>
+
+          <div class="recent-sessions-list">
+            <button
+              v-for="session in recentChatSessions"
+              :key="session.conversationId"
+              type="button"
+              class="recent-session-item"
+              :class="{ active: session.conversationId === conversationId }"
+              :disabled="
+                chatSending || switchingChatSessionId === session.conversationId
+              "
+              @click="switchRecentChatSession(session.conversationId)"
+            >
+              <span class="recent-session-title">{{ session.title }}</span>
+              <span class="recent-session-preview">
+                {{ session.preview || "暂无内容" }}
+              </span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -230,7 +260,6 @@
             </div>
           </div>
 
-
           <button type="submit" class="btn-submit">保存个人画像</button>
         </form>
       </section>
@@ -294,15 +323,51 @@ import axios from "axios";
 const router = useRouter();
 const AI_CHAT_API_ENDPOINT = "https://api.placeholder.chat/3k9x2m7nq1";
 const CHAT_DATA_STORAGE_KEY = "profile_ai_chat_training_data";
+const CHAT_STATE_STORAGE_PREFIX = "profile_ai_chat_state";
+const CHAT_CONVERSATION_STORAGE_PREFIX = "profile_ai_chat_conversation";
+const CHAT_RECENT_SESSIONS_STORAGE_PREFIX = "profile_ai_chat_recent_sessions";
+const MAX_RECENT_CHAT_SESSIONS = 8;
 
-const conversationId = `conv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+const createConversationId = () =>
+  `conv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+const getCurrentUserStorageSuffix = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    if (user && user.id) {
+      return user.id;
+    }
+  } catch (error) {
+    console.error("读取用户信息失败:", error);
+  }
+  return "anonymous";
+};
+
+const getChatStateStorageKey = () =>
+  `${CHAT_STATE_STORAGE_PREFIX}_${getCurrentUserStorageSuffix()}`;
+
+const getConversationStorageKey = () =>
+  `${CHAT_CONVERSATION_STORAGE_PREFIX}_${getCurrentUserStorageSuffix()}`;
+
+const getRecentChatSessionsStorageKey = () =>
+  `${CHAT_RECENT_SESSIONS_STORAGE_PREFIX}_${getCurrentUserStorageSuffix()}`;
+
+const conversationId = ref("");
+
+const createAssistantWelcomeMessage = () => ({
+  id: `msg_${Math.random().toString(36).slice(2, 10)}`,
+  role: "assistant",
+  content:
+    "你好，我是画像 AI 助手。你可以先完成题目，再告诉我你的聊天风格与关系边界。",
+  createdAt: new Date().toISOString(),
+});
 
 const profile = ref({
   age: "",
   gender: "",
   occupation: "",
-  sexual_orientation: ""
-})
+  sexual_orientation: "",
+});
 
 const hobbies = ref([
   "阅读",
@@ -396,21 +461,14 @@ const questionnaireCollapsed = ref(false);
 const chatInput = ref("");
 const chatSending = ref(false);
 const chatMessagesContainer = ref(null);
-const chatMessages = ref([
-  {
-    id: `msg_${Math.random().toString(36).slice(2, 10)}`,
-    role: "assistant",
-    content:
-      "你好，我是画像 AI 助手。你可以先完成题目，再告诉我你的聊天风格与关系边界。",
-    createdAt: new Date().toISOString(),
-  },
-]);
+const chatMessages = ref([createAssistantWelcomeMessage()]);
+const recentChatSessions = ref([]);
+const switchingChatSessionId = ref("");
 const collectedChatRecords = ref([]);
 const isProfileLoading = ref(false);
 const answersAutoSaveState = ref("idle");
 const answersAutoSaveMessage = ref("");
-const PROFILE_ANSWER_AUTO_SAVE_ENDPOINT =
-  "http://localhost:5000/api/profile";
+const PROFILE_ANSWER_AUTO_SAVE_ENDPOINT = "http://localhost:5000/api/profile";
 let answerAutoSaveTimer = null;
 const lastSavedAnswerSignature = ref("");
 
@@ -502,9 +560,13 @@ const personalityAnalysis = ref({
 });
 
 onMounted(async () => {
+  ensureConversationId();
+  loadRecentChatSessions();
   await loadProfile();
+  restoreChatSessionState();
   await loadChatHistoryFromDB();
   loadCollectedChatData();
+  await scrollChatToBottom();
 
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -512,6 +574,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  persistChatSessionState();
+
   if (typeof window !== "undefined") {
     window.removeEventListener("beforeunload", handleBeforeUnload);
   }
@@ -523,6 +587,7 @@ onBeforeUnmount(() => {
 });
 
 onBeforeRouteLeave(async () => {
+  persistChatSessionState();
   await flushQuestionnaireAnswersOnLeave();
 });
 
@@ -543,8 +608,8 @@ const updateAnswerAutoSaveState = (state, message) => {
 };
 
 const getCurrentUserId = () => {
-  const user = JSON.parse(localStorage.getItem("user") || "null");
-  return user && user.id ? user.id : null;
+  const userStorageSuffix = getCurrentUserStorageSuffix();
+  return userStorageSuffix === "anonymous" ? null : userStorageSuffix;
 };
 
 const buildAnswerPayload = (userId) => ({
@@ -674,6 +739,7 @@ const flushQuestionnaireAnswersOnLeave = async ({ useBeacon = false } = {}) => {
 };
 
 const handleBeforeUnload = () => {
+  persistChatSessionState();
   flushQuestionnaireAnswersOnLeave({ useBeacon: true });
 };
 
@@ -703,6 +769,261 @@ watch(
 
 const createMessageId = () =>
   `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+const ensureConversationId = () => {
+  if (conversationId.value) {
+    return conversationId.value;
+  }
+
+  try {
+    const storageKey = getConversationStorageKey();
+    const savedConversationId = localStorage.getItem(storageKey);
+
+    if (savedConversationId) {
+      conversationId.value = savedConversationId;
+      return conversationId.value;
+    }
+
+    const newConversationId = createConversationId();
+    conversationId.value = newConversationId;
+    localStorage.setItem(storageKey, newConversationId);
+    return newConversationId;
+  } catch (error) {
+    console.error("初始化会话ID失败:", error);
+    const fallbackConversationId = createConversationId();
+    conversationId.value = fallbackConversationId;
+    return fallbackConversationId;
+  }
+};
+
+const normalizeRecentChatSession = (rawSession) => {
+  if (!rawSession || typeof rawSession !== "object") {
+    return null;
+  }
+
+  const normalizedConversationId =
+    typeof rawSession.conversationId === "string"
+      ? rawSession.conversationId.trim()
+      : "";
+
+  if (!normalizedConversationId) {
+    return null;
+  }
+
+  return {
+    conversationId: normalizedConversationId,
+    title:
+      typeof rawSession.title === "string" && rawSession.title.trim()
+        ? rawSession.title.trim()
+        : "新会话",
+    preview:
+      typeof rawSession.preview === "string" ? rawSession.preview.trim() : "",
+    updatedAt:
+      typeof rawSession.updatedAt === "string" && rawSession.updatedAt
+        ? rawSession.updatedAt
+        : new Date().toISOString(),
+  };
+};
+
+const loadRecentChatSessions = () => {
+  try {
+    const raw = localStorage.getItem(getRecentChatSessionsStorageKey());
+    if (!raw) {
+      recentChatSessions.value = [];
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      recentChatSessions.value = [];
+      return;
+    }
+
+    recentChatSessions.value = parsed
+      .map((item) => normalizeRecentChatSession(item))
+      .filter((item) => item !== null)
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
+      .slice(0, MAX_RECENT_CHAT_SESSIONS);
+  } catch (error) {
+    console.error("读取最近会话列表失败:", error);
+    recentChatSessions.value = [];
+  }
+};
+
+const persistRecentChatSessions = () => {
+  localStorage.setItem(
+    getRecentChatSessionsStorageKey(),
+    JSON.stringify(recentChatSessions.value),
+  );
+};
+
+const buildChatSessionSummary = (messages) => {
+  const normalizedMessages = Array.isArray(messages)
+    ? messages
+        .map((message) => sanitizeChatMessage(message))
+        .filter((message) => message !== null)
+    : [];
+
+  const latestMessage =
+    normalizedMessages.length > 0
+      ? normalizedMessages[normalizedMessages.length - 1]
+      : null;
+  const firstUserMessage = normalizedMessages.find(
+    (message) => message.role === "user" && message.content.trim(),
+  );
+
+  const previewSource = latestMessage?.content?.trim() || "新会话";
+  const titleSource = firstUserMessage?.content?.trim() || previewSource;
+
+  return {
+    title: titleSource.slice(0, 20),
+    preview: previewSource.slice(0, 36),
+  };
+};
+
+const upsertRecentChatSession = (sessionConversationId, messages) => {
+  const normalizedConversationId =
+    typeof sessionConversationId === "string"
+      ? sessionConversationId.trim()
+      : "";
+  if (!normalizedConversationId) {
+    return;
+  }
+
+  const summary = buildChatSessionSummary(messages);
+  const sessionItem = {
+    conversationId: normalizedConversationId,
+    title: summary.title || "新会话",
+    preview: summary.preview || "新会话",
+    updatedAt: new Date().toISOString(),
+  };
+
+  recentChatSessions.value = [
+    sessionItem,
+    ...recentChatSessions.value.filter(
+      (session) => session.conversationId !== normalizedConversationId,
+    ),
+  ].slice(0, MAX_RECENT_CHAT_SESSIONS);
+
+  persistRecentChatSessions();
+};
+
+const sanitizeChatMessage = (rawMessage) => {
+  if (!rawMessage || typeof rawMessage !== "object") {
+    return null;
+  }
+
+  if (typeof rawMessage.content !== "string" || !rawMessage.content.trim()) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof rawMessage.id === "string" && rawMessage.id
+        ? rawMessage.id
+        : createMessageId(),
+    role: rawMessage.role === "user" ? "user" : "assistant",
+    content: rawMessage.content,
+    createdAt:
+      typeof rawMessage.createdAt === "string" && rawMessage.createdAt
+        ? rawMessage.createdAt
+        : new Date().toISOString(),
+  };
+};
+
+const ensureChatMessagesReady = () => {
+  if (!Array.isArray(chatMessages.value) || chatMessages.value.length === 0) {
+    chatMessages.value = [createAssistantWelcomeMessage()];
+  }
+};
+
+const restoreChatSessionState = () => {
+  try {
+    const rawState = localStorage.getItem(getChatStateStorageKey());
+    if (!rawState) {
+      ensureConversationId();
+      ensureChatMessagesReady();
+      return;
+    }
+
+    const parsedState = JSON.parse(rawState);
+    if (
+      parsedState &&
+      typeof parsedState.conversationId === "string" &&
+      parsedState.conversationId
+    ) {
+      conversationId.value = parsedState.conversationId;
+      localStorage.setItem(
+        getConversationStorageKey(),
+        parsedState.conversationId,
+      );
+    } else {
+      ensureConversationId();
+    }
+
+    if (Array.isArray(parsedState?.chatMessages)) {
+      const restoredMessages = parsedState.chatMessages
+        .map((msg) => sanitizeChatMessage(msg))
+        .filter((msg) => msg !== null);
+
+      if (restoredMessages.length > 0) {
+        chatMessages.value = restoredMessages;
+      }
+    }
+
+    if (typeof parsedState?.chatInput === "string") {
+      chatInput.value = parsedState.chatInput;
+    }
+
+    if (
+      typeof parsedState?.questionnaireCollapsed === "boolean" &&
+      isQuestionnaireCompleted.value
+    ) {
+      questionnaireCollapsed.value = parsedState.questionnaireCollapsed;
+    }
+
+    ensureChatMessagesReady();
+  } catch (error) {
+    console.error("恢复聊天界面状态失败:", error);
+    ensureConversationId();
+    ensureChatMessagesReady();
+  }
+};
+
+const persistChatSessionState = () => {
+  try {
+    const activeConversationId = ensureConversationId();
+    const normalizedMessages = chatMessages.value
+      .map((msg) => sanitizeChatMessage(msg))
+      .filter((msg) => msg !== null);
+
+    const payload = {
+      conversationId: activeConversationId,
+      chatMessages: normalizedMessages,
+      chatInput: chatInput.value,
+      questionnaireCollapsed: isQuestionnaireCompleted.value
+        ? questionnaireCollapsed.value
+        : false,
+      updatedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(getChatStateStorageKey(), JSON.stringify(payload));
+    localStorage.setItem(getConversationStorageKey(), activeConversationId);
+  } catch (error) {
+    console.error("保存聊天界面状态失败:", error);
+  }
+};
+
+watch(
+  [chatMessages, chatInput, questionnaireCollapsed],
+  () => {
+    persistChatSessionState();
+  },
+  { deep: true },
+);
 
 const scrollChatToBottom = async () => {
   await nextTick();
@@ -738,9 +1059,10 @@ const persistCollectedChatData = () => {
 
 const collectChatData = (message) => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const activeConversationId = ensureConversationId();
   const record = {
     id: message.id,
-    conversation_id: conversationId,
+    conversation_id: activeConversationId,
     user_id: user.id || null,
     role: message.role,
     content: message.content,
@@ -754,6 +1076,7 @@ const collectChatData = (message) => {
 };
 
 const appendChatMessage = (role, content, shouldCollect = true) => {
+  const activeConversationId = ensureConversationId();
   const message = {
     id: createMessageId(),
     role,
@@ -765,6 +1088,7 @@ const appendChatMessage = (role, content, shouldCollect = true) => {
   if (shouldCollect) {
     collectChatData(message);
   }
+  upsertRecentChatSession(activeConversationId, chatMessages.value);
   scrollChatToBottom();
 };
 
@@ -781,12 +1105,12 @@ const requestAiReply = async (userMessage) => {
       user_id: user.id,
       matched_user_id: "ai_assistant", // AI助手ID
       message: userMessage,
-      chat_history: chatMessages.value.map(msg => ({
+      chat_history: chatMessages.value.map((msg) => ({
         content: msg.content,
-        isUser: msg.role === "user"
+        isUser: msg.role === "user",
       })),
-      favorability: 50 // 默认好感度
-    }
+      favorability: 50, // 默认好感度
+    },
   );
 
   if (response.data.status === "success") {
@@ -803,19 +1127,21 @@ const saveChatHistoryToDB = async () => {
       return;
     }
 
-    const messages = chatMessages.value.map(msg => ({
+    const activeConversationId = ensureConversationId();
+
+    const messages = chatMessages.value.map((msg) => ({
       id: msg.id,
       role: msg.role,
       content: msg.content,
-      createdAt: msg.createdAt
+      createdAt: msg.createdAt,
     }));
 
     await axios.post("http://localhost:5000/api/ai-chat-history", {
       user_id: user.id,
       matched_user_id: "ai_assistant",
-      chat_id: conversationId,
+      chat_id: activeConversationId,
       messages: messages,
-      favorability: 50
+      favorability: 50,
     });
   } catch (error) {
     console.error("保存聊天历史到数据库失败:", error);
@@ -839,10 +1165,7 @@ const sendChatMessage = async () => {
     await saveChatHistoryToDB();
   } catch (error) {
     console.error("AI 回复失败:", error);
-    appendChatMessage(
-      "assistant",
-      "AI接口暂不可用，但你的聊天数据已被采集。",
-    );
+    appendChatMessage("assistant", "AI接口暂不可用，但你的聊天数据已被采集。");
   } finally {
     chatSending.value = false;
   }
@@ -854,7 +1177,82 @@ const clearCollectedChatData = () => {
   appendChatMessage("assistant", "已清空当前浏览器中的聊天采集数据。", false);
 };
 
-const loadChatHistoryFromDB = async () => {
+const startNewChatSession = async () => {
+  if (chatSending.value) {
+    return;
+  }
+
+  const currentConversationId = ensureConversationId();
+
+  const hasUserMessages = chatMessages.value.some(
+    (message) => message.role === "user",
+  );
+
+  if (
+    hasUserMessages &&
+    typeof window !== "undefined" &&
+    !window.confirm("确认开启新会话吗？当前聊天会保留在历史中。")
+  ) {
+    return;
+  }
+
+  await saveChatHistoryToDB();
+  upsertRecentChatSession(currentConversationId, chatMessages.value);
+
+  const nextConversationId = createConversationId();
+  conversationId.value = nextConversationId;
+  localStorage.setItem(getConversationStorageKey(), nextConversationId);
+
+  chatInput.value = "";
+  chatMessages.value = [createAssistantWelcomeMessage()];
+  upsertRecentChatSession(nextConversationId, chatMessages.value);
+  persistChatSessionState();
+  await scrollChatToBottom();
+};
+
+const switchRecentChatSession = async (targetConversationId) => {
+  const normalizedTargetConversationId =
+    typeof targetConversationId === "string" ? targetConversationId.trim() : "";
+
+  if (
+    !normalizedTargetConversationId ||
+    chatSending.value ||
+    switchingChatSessionId.value ||
+    normalizedTargetConversationId === conversationId.value
+  ) {
+    return;
+  }
+
+  switchingChatSessionId.value = normalizedTargetConversationId;
+
+  try {
+    const currentConversationId = ensureConversationId();
+    await saveChatHistoryToDB();
+    upsertRecentChatSession(currentConversationId, chatMessages.value);
+
+    conversationId.value = normalizedTargetConversationId;
+    localStorage.setItem(
+      getConversationStorageKey(),
+      normalizedTargetConversationId,
+    );
+
+    chatInput.value = "";
+    chatMessages.value = [createAssistantWelcomeMessage()];
+
+    await loadChatHistoryFromDB(normalizedTargetConversationId);
+    persistChatSessionState();
+    await scrollChatToBottom();
+  } finally {
+    switchingChatSessionId.value = "";
+  }
+};
+
+const loadChatHistoryFromDB = async (targetConversationId = "") => {
+  const activeConversationId =
+    typeof targetConversationId === "string" && targetConversationId.trim()
+      ? targetConversationId.trim()
+      : ensureConversationId();
+
   try {
     const user = JSON.parse(localStorage.getItem("user"));
     if (!user) {
@@ -862,24 +1260,30 @@ const loadChatHistoryFromDB = async () => {
     }
 
     const response = await axios.get(
-      `http://localhost:5000/api/ai-chat-history/${conversationId}`
+      `http://localhost:5000/api/ai-chat-history/${activeConversationId}`,
     );
 
     if (response.data.status === "success" && response.data.data) {
       const historyData = response.data.data;
       if (historyData.messages && historyData.messages.length > 0) {
         // 清空默认消息，加载历史记录
-        chatMessages.value = historyData.messages.map(msg => ({
+        chatMessages.value = historyData.messages.map((msg) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
-          createdAt: msg.createdAt
+          createdAt: msg.createdAt,
         }));
       }
     }
+
+    ensureChatMessagesReady();
   } catch (error) {
     console.error("加载聊天历史失败:", error);
+    ensureChatMessagesReady();
   }
+
+  upsertRecentChatSession(activeConversationId, chatMessages.value);
+  persistChatSessionState();
 };
 
 const loadProfile = async () => {
@@ -900,7 +1304,6 @@ const loadProfile = async () => {
       profile.value.gender = profileData.gender || "";
       profile.value.occupation = profileData.occupation || "";
       profile.value.sexual_orientation = profileData.sexual_orientation || "";
-      
 
       // 处理兴趣爱好
       if (profileData.hobbies) {
@@ -1004,22 +1407,22 @@ const submitProfile = async () => {
     }
 
     // 调试信息：检查用户数据
-    console.log('用户数据:', user);
-    console.log('用户ID:', user.id);
-    console.log('用户ID类型:', typeof user.id);
+    console.log("用户数据:", user);
+    console.log("用户ID:", user.id);
+    console.log("用户ID类型:", typeof user.id);
 
     // 检查用户ID是否在数据库中存在，如果不存在，尝试使用数据库中实际存在的用户ID
     let effectiveUserId = user.id;
-    
+
     // 如果当前用户ID是 user_81553fda，但数据库中实际存在的是 user_2，则使用 user_2
-    if (user.id === 'user_81553fda' && user.username === 'wangyi') {
-      console.log('检测到用户ID不匹配，尝试使用数据库中实际存在的用户ID');
-      effectiveUserId = 'user_2';
-      
+    if (user.id === "user_81553fda" && user.username === "wangyi") {
+      console.log("检测到用户ID不匹配，尝试使用数据库中实际存在的用户ID");
+      effectiveUserId = "user_2";
+
       // 更新localStorage中的用户ID
-      const updatedUser = { ...user, id: 'user_2' };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      console.log('已更新localStorage中的用户ID为:', effectiveUserId);
+      const updatedUser = { ...user, id: "user_2" };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      console.log("已更新localStorage中的用户ID为:", effectiveUserId);
     }
 
     // 计算量化得分
@@ -1035,15 +1438,15 @@ const submitProfile = async () => {
     };
 
     // 调试信息：检查提交的数据
-    console.log('提交的个人画像数据:', profileData);
+    console.log("提交的个人画像数据:", profileData);
 
     const response = await axios.post(
       "http://localhost:5000/api/profile",
       profileData,
     );
-    
-    console.log('API响应:', response.data);
-    
+
+    console.log("API响应:", response.data);
+
     if (response.data.status === "success") {
       lastSavedAnswerSignature.value = answerSignature.value;
       updateAnswerAutoSaveState("saved", "题目答案已保存");
@@ -1060,7 +1463,10 @@ const submitProfile = async () => {
   } catch (error) {
     console.error("保存个人画像失败:", error);
     console.error("错误详情:", error.response?.data || error.message);
-    alert("保存失败，请稍后重试。错误信息：" + (error.response?.data?.message || error.message));
+    alert(
+      "保存失败，请稍后重试。错误信息：" +
+        (error.response?.data?.message || error.message),
+    );
   }
 };
 </script>
@@ -1095,13 +1501,21 @@ const submitProfile = async () => {
 
 /* AI聊天区域特殊样式 */
 .chat-panel {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(240, 248, 255, 0.3));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.3),
+    rgba(240, 248, 255, 0.3)
+  );
   border: 1px solid rgba(100, 149, 237, 0.2);
 }
 
 /* 客观题区域特殊样式 */
 .questionnaire-panel {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(245, 245, 245, 0.25));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25),
+    rgba(245, 245, 245, 0.25)
+  );
   border: 1px solid rgba(169, 169, 169, 0.2);
 }
 
@@ -1495,6 +1909,82 @@ textarea {
   flex-wrap: wrap;
 }
 
+.recent-sessions {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 146, 176, 0.2);
+  background: rgba(255, 255, 255, 0.66);
+  padding: 10px;
+}
+
+.recent-sessions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #355476;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.session-count {
+  font-size: 12px;
+  color: #5f7390;
+}
+
+.recent-sessions-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.recent-session-item {
+  border: 1px solid rgba(120, 146, 176, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-session-item:hover {
+  border-color: rgba(41, 127, 188, 0.45);
+  background: rgba(243, 250, 255, 0.96);
+}
+
+.recent-session-item.active {
+  border-color: rgba(31, 111, 178, 0.55);
+  background: rgba(226, 241, 255, 0.78);
+}
+
+.recent-session-title {
+  color: #214466;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-session-preview {
+  color: #5e7693;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-session-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .btn-link {
   border: none;
   background: none;
@@ -1509,6 +1999,21 @@ textarea {
 .btn-link:hover {
   text-decoration: underline;
   background: rgba(31, 111, 178, 0.1);
+}
+
+.btn-link-warning {
+  color: #a05f0f;
+}
+
+.btn-link-warning:hover {
+  background: rgba(160, 95, 15, 0.12);
+}
+
+.btn-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: none;
+  background: none;
 }
 
 /* 模态框样式 */
