@@ -35,7 +35,6 @@ def _to_bool (value: str, default: bool) -> bool:
     if v in("0","false","no","off"):
         return False
     return default
-
 #寻找数据库路径
 def _default_db_path() ->Path:
     candidatas =[
@@ -58,10 +57,19 @@ class Settings:
     #特征权重
     vector_profile_weight: float  
     vector_text_weight: float    
+
+    #匹配引擎配置
+    match_engine: str              #cosine 或 dual_tower
+    dual_tower_embed_dim: int      #双塔投影维度
+    dual_tower_seed: int           #双塔随机种子
+    dual_tower_profile_weight: float
+    dual_tower_intent_weight: float
     
     #调度参数
-    #匹配间隔
-    scheduler_interval_minutes: int
+    scheduler_cron_days: str     #每周触发日，APScheduler day_of_week 格式
+    scheduler_cron_hour: int     #触发小时(0-23)
+    scheduler_cron_minute: int   #触发分钟(0-59)
+    scheduler_timezone: str      #调度时区
 
     #运行策略
     apply_min_score: bool         #是否启用最低相似度阈值
@@ -93,7 +101,16 @@ def get_settings() ->Settings:
         vector_profile_weight=_to_float(os.getenv("PAIRMODEL_PROFILE_WEIGHT", "0.7"), 0.7),
         vector_text_weight=_to_float(os.getenv("PAIRMODEL_TEXT_WEIGHT", "0.3"), 0.3),
 
-        scheduler_interval_minutes=_to_int(os.getenv("PAIRMODEL_SCHEDULE_MINUTES", "7200"), 7200),
+        match_engine=os.getenv("PAIRMODEL_MATCH_ENGINE", "cosine").strip().lower() or "cosine",
+        dual_tower_embed_dim=max(8, _to_int(os.getenv("PAIRMODEL_DUAL_TOWER_DIM", "64"), 64)),
+        dual_tower_seed=_to_int(os.getenv("PAIRMODEL_DUAL_TOWER_SEED", "42"), 42),
+        dual_tower_profile_weight=_to_float(os.getenv("PAIRMODEL_DUAL_TOWER_PROFILE_WEIGHT", "0.6"), 0.6),
+        dual_tower_intent_weight=_to_float(os.getenv("PAIRMODEL_DUAL_TOWER_INTENT_WEIGHT", "0.4"), 0.4),
+
+        scheduler_cron_days=(os.getenv("PAIRMODEL_SCHEDULE_DAYS", "tue,fri").strip().lower() or "tue,fri"),
+        scheduler_cron_hour=min(23, max(0, _to_int(os.getenv("PAIRMODEL_SCHEDULE_HOUR", "0"), 0))),
+        scheduler_cron_minute=min(59, max(0, _to_int(os.getenv("PAIRMODEL_SCHEDULE_MINUTE", "0"), 0))),
+        scheduler_timezone=(os.getenv("PAIRMODEL_SCHEDULE_TZ", "Asia/Shanghai").strip() or "Asia/Shanghai"),
 
         apply_min_score=_to_bool(os.getenv("PAIRMODEL_APPLY_MIN_SCORE", "false"), False),
         run_once=_to_bool(os.getenv("PAIRMODEL_RUN_ONCE", "false"), False),

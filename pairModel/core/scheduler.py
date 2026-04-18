@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Dict,List,Tuple
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -12,13 +11,7 @@ from services.pusher import push_pending_once
 
 LOGGER = logging.getLogger(__name__)
 
-@dataclass
-class _RoundRobinState:
-    cursor: int = 0
-
-_STATE = _RoundRobinState()
-
-#构建轮转队列：从两个池中提取可计算用户
+#构建批处理队列：收集两个池里全部可计算用户
 def _build_candidate_queue() -> List[Tuple[str,str]]:
     #从两个池中选取候选用户，队列元素：user_id,intent_type
     queue : List[Tuple[str,str]] = []
@@ -35,31 +28,39 @@ def _build_candidate_queue() -> List[Tuple[str,str]]:
     return queue
 
 
-#执行一次调度 tick：挑选一个用户做匹配并按需推送
+#执行一次调度 tick：批量处理所有用户，不按先后轮询
 def run_match_once(apply_min_score: bool = False) -> Dict[str,object]:
-    #单次匹配，前期apply_min_score=false,只按时间推送，后期可将false改为true
     queue = _build_candidate_queue()
     if not queue:
         return{
             "status": "empty",
-            "queue_size": 0,
+            "queue_pairs": 0,
+            "users_involved": 0,
             "records_generated": 0,
         }
-    
-    #轮转游标，避免总是命中同一个用户
-    index = _STATE.cursor % len(queue)
-    _STATE.cursor = (index + 1)%len(queue)
 
-    user_id,intent_type = queue[index]
-    result = match_and_save_for_user(
-        user_id=user_id,
-        intent_type=intent_type,
-        apply_min_score=apply_min_score,
-        top_k=1,  # 前期先固定每次推荐 1 人
-    )
-    
-    if result.records_generated > 0 and SETTINGS.enable_push:
-        push_result = push_pending_once(limit=1, user_id=user_id)
+    users_involved = set()
+    processed_by_intent = {"伴侣": 0, "朋友": 0}
+    generated_by_intent = {"伴侣": 0, "朋友": 0}
+    total_generated = 0
+
+    for user_id, intent_type in queue:
+        clear_existing_pending = user_id not in users_involved
+        result = match_and_save_for_user(
+            user_id=user_id,
+            intent_type=intent_type,
+            apply_min_score=apply_min_score,
+            top_k=1,
+            clear_existing_pending=clear_existing_pending,
+        )
+        users_involved.add(user_id)
+        processed_by_intent[intent_type] = processed_by_intent.get(intent_type, 0) + 1
+        generated_by_intent[intent_type] = generated_by_intent.get(intent_type, 0) + int(result.records_generated)
+        total_generated += int(result.records_generated)
+
+    if total_generated > 0 and SETTINGS.enable_push:
+        # 只推送本轮新生成的记录，避免把历史 pending 误当成本轮结果重复推送。
+        push_result = push_pending_once(limit=total_generated)
     else:
         push_result = {
             "status": "disabled" if not SETTINGS.enable_push else "skipped",
@@ -70,15 +71,15 @@ def run_match_once(apply_min_score: bool = False) -> Dict[str,object]:
         }
 
     LOGGER.info(
-        "match tick user=%s intent=%s apply_min_score=%s generated=%s",
-        user_id,
-        intent_type,
+        "match tick batch apply_min_score=%s users=%s pairs=%s generated=%s by_intent=%s",
         apply_min_score,
-        result.records_generated,
+        len(users_involved),
+        len(queue),
+        total_generated,
+        generated_by_intent,
     )
     LOGGER.info(
-        "push tick user=%s status=%s total=%s success=%s failed=%s",
-        user_id,
+        "push tick batch status=%s total=%s success=%s failed=%s",
         push_result.get("status"),
         push_result.get("total",0),
         push_result.get("success",0),
@@ -86,26 +87,31 @@ def run_match_once(apply_min_score: bool = False) -> Dict[str,object]:
     )
     return{
         "status": "ok",
-        "user_id": user_id,
-        "intent_type": intent_type,
-        "queue_size": len(queue),
-        "records_generated": result.records_generated,
+        "queue_pairs": len(queue),
+        "users_involved": len(users_involved),
+        "processed_by_intent": processed_by_intent,
+        "generated_by_intent": generated_by_intent,
+        "records_generated": total_generated,
         "push": push_result,
     }
     
 #创建 APScheduler 调度器并注册匹配任务
 def create_scheduler(apply_min_score: bool = False) -> BackgroundScheduler:
-    # 创建调度器，真正开关在这里传入
-    scheduler = BackgroundScheduler()
+    days = str(getattr(SETTINGS, "scheduler_cron_days", "tue,fri") or "tue,fri").strip().lower()
+    hour = max(0, min(23, int(getattr(SETTINGS, "scheduler_cron_hour", 0))))
+    minute = max(0, min(59, int(getattr(SETTINGS, "scheduler_cron_minute", 0))))
+    scheduler = BackgroundScheduler(timezone=getattr(SETTINGS, "scheduler_timezone", "Asia/Shanghai"))
     scheduler.add_job(
         run_match_once,
-        trigger="interval",
-        minutes=max(1, int(SETTINGS.scheduler_interval_minutes)),
+        trigger="cron",
+        day_of_week=days,
+        hour=hour,
+        minute=minute,
         kwargs={"apply_min_score": apply_min_score},
         id="pairmodel_match_tick",
         replace_existing=True,
         coalesce=True,
         max_instances=1,
-        misfire_grace_time=30,
+        misfire_grace_time=6 * 60 * 60,
     )
     return scheduler

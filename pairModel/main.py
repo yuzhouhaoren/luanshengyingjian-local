@@ -48,9 +48,12 @@ def main() -> None:
     scheduler = create_scheduler(apply_min_score=apply_min_score)
     scheduler.start()
     logger.info(
-        "pairModel scheduler started, apply_min_score=%s, interval_minutes=%s",
+        "pairModel scheduler started, apply_min_score=%s, cron_days=%s, time=%02d:%02d, tz=%s",
         apply_min_score,
-        SETTINGS.scheduler_interval_minutes,
+        SETTINGS.scheduler_cron_days,
+        int(SETTINGS.scheduler_cron_hour),
+        int(SETTINGS.scheduler_cron_minute),
+        SETTINGS.scheduler_timezone,
     )
 
     try:

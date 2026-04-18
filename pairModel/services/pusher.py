@@ -91,7 +91,7 @@ def _load_pending_matches(limit: int = 20, user_id: Optional[str] = None) -> Lis
 			SELECT id, user_id, matched_user_id, matched_user_name, match_score, intent_type, email
 			FROM match_results
 			WHERE {where_sql}
-			ORDER BY created_at DESC
+			ORDER BY match_score DESC, created_at DESC
 			LIMIT ?
 			""",
 			params,

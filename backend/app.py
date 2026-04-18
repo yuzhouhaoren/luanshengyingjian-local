@@ -1100,7 +1100,7 @@ def get_matches(user_id):
         FROM match_results mr
         LEFT JOIN users u ON mr.matched_user_id = u.id
         WHERE mr.user_id = ? AND mr.status = 'pending'
-        ORDER BY mr.created_at DESC
+        ORDER BY mr.match_score DESC, mr.created_at DESC
     ''', (user_id,))
     
     matches = cursor.fetchall()
