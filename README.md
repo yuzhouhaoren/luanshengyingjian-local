@@ -1,5 +1,193 @@
-# Vue 3 + Vite
+# 智能交友匹配系统
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+## 项目介绍
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+智能交友匹配系统是一个基于大语言模型的交友平台，通过AI技术分析用户画像，实现智能匹配和个性化聊天功能。系统融合了用户习惯分析、AI学习系统、帖子生成和好感度系统等多种功能，为用户提供智能化的交友体验。
+
+## 核心功能
+
+### 1. 大模型集成
+- 连接阿里云 dashscope API
+- 使用 qwen3.5-flash 模型
+- 实现智能聊天和帖子生成
+
+### 2. 用户画像管理
+- 个人基本信息采集
+- 聊天风格分析
+- 爱好和兴趣偏好记录
+
+### 3. 用户习惯分析模块
+- "童虎"用户访谈系统
+- 基于大模型的用户行为分析
+- 个性化AI人设生成
+
+### 4. AI学习系统
+- RAG 技术实现
+- 用户数据实时更新
+- 个性化AI回复生成
+
+### 5. 帖子生成系统
+- 小红书风格交友帖生成
+- 伴侣和朋友意向分类
+- 基于用户画像的内容个性化
+
+### 6. AI聊天系统
+- 好感度系统（0-100分）
+- 智能聊天机器人
+- 联系信息解锁（好感度达到80分）
+
+### 7. 权限控制
+- 防止与自己的帖子机器人聊天
+- 安全的用户身份验证
+
+## 技术栈
+
+### 前端
+- Vue 3 + Vite
+- JavaScript
+- CSS3
+- Axios（API调用）
+
+### 后端
+- Python Flask
+- SQLite 数据库
+- 阿里云 dashscope API
+- 大语言模型集成
+
+## 项目结构
+
+```
+├── backend/             # 后端代码
+│   ├── AI/             # AI相关模块
+│   │   ├── llm_integration.py     # 大模型集成
+│   │   ├── user_habit_analyzer.py # 用户习惯分析
+│   │   ├── rag_system.py          # RAG系统
+│   │   ├── favorability_system.py # 好感度系统
+│   │   ├── cache_system.py        # 缓存系统
+│   │   ├── creat.txt              # 帖子生成规范
+│   │   └── Createtext.txt         # AI聊天规范
+│   ├── app.py          # 主应用
+│   └── dating.db       # SQLite数据库
+├── frontend/            # 前端代码
+│   ├── src/             # 源代码
+│   │   ├── views/        # 页面组件
+│   │   │   ├── ProfileView.vue     # 个人画像
+│   │   │   ├── SquareView.vue       # 聊天广场
+│   │   │   ├── IntentView.vue       # 匹配意向
+│   │   │   └── LoginView.vue        # 登录注册
+│   │   ├── router/       # 路由配置
+│   │   └── assets/       # 静态资源
+│   ├── package.json      # 依赖管理
+│   └── vite.config.js    # Vite配置
+└── README.md            # 项目说明
+```
+
+## 安装与运行
+
+### 前置条件
+- Python 3.8+
+- Node.js 16+
+- npm 8+
+
+### 安装步骤
+
+1. **克隆项目**
+   ```bash
+   git clone <项目地址>
+   cd luanshengyingjian-local-frontend-beautify
+   ```
+
+2. **安装后端依赖**
+   ```bash
+   cd backend
+   pip install flask flask-cors
+   ```
+
+3. **安装前端依赖**
+   ```bash
+   cd ../frontend
+   npm install
+   ```
+
+### 运行项目
+
+1. **启动后端服务**
+   ```bash
+   cd backend
+   python app.py
+   ```
+   后端服务将运行在 http://localhost:5000/
+
+2. **启动前端服务**
+   ```bash
+   cd ../frontend
+   npm run dev
+   ```
+   前端服务将运行在 http://localhost:5173/
+
+## 使用方法
+
+### 1. 注册登录
+- 访问 http://localhost:5173/
+- 点击注册按钮创建账号
+- 使用注册的账号登录
+
+### 2. 填写个人画像
+- 登录后进入个人画像页面
+- 填写基本信息、聊天风格和爱好
+- 完成客观题问卷
+- 与AI助手聊天，让系统了解你的聊天风格
+
+### 3. 填写匹配意向
+- 进入匹配意向页面
+- 选择伴侣或志趣相投的朋友意向
+- 填写相关问卷
+
+### 4. 生成交友帖子
+- 在个人画像页面点击"生成伴侣帖子"或"生成朋友帖子"按钮
+- 系统会基于你的个人画像生成个性化的交友帖子
+
+### 5. 浏览聊天广场
+- 进入聊天广场页面
+- 浏览其他用户的帖子
+- 点击"和Ta聊聊"按钮与对方的AI机器人聊天
+
+### 6. 与AI聊天
+- 在聊天对话框中与AI机器人互动
+- 好感度会随着互动增加
+- 当好感度达到80分时，会解锁对方的联系信息
+
+## 注意事项
+
+1. **API密钥**：系统使用阿里云 dashscope API，需要确保API密钥有效
+2. **数据持久化**：聊天记录和好感度数据会保存在数据库中
+3. **权限控制**：系统会防止用户与自己的帖子机器人聊天
+4. **性能优化**：系统实现了缓存机制，提高响应速度
+
+## 故障排查
+
+### 常见问题
+
+1. **前端无法连接后端**
+   - 检查后端服务是否运行
+   - 检查API地址是否正确
+
+2. **AI回复缓慢**
+   - 大模型API调用可能需要一定时间
+   - 系统已实现缓存机制，后续回复会更快
+
+3. **好感度不增加**
+   - 确保聊天内容符合系统要求
+   - 避免使用冒犯性语言
+
+4. **帖子生成失败**
+   - 检查个人画像是否完整
+   - 确保API密钥有效
+
+## 技术支持
+
+如有任何问题或建议，请联系项目维护者。
+
+---
+
+**智能交友匹配系统** - 让AI助力你的交友之旅！

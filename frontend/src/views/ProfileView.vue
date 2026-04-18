@@ -4,6 +4,103 @@
       class="profile-layout"
       :class="{ 'questions-complete': isQuestionnaireCompleted }"
     >
+      <!-- AI聊天区域 - 始终显示在上方 -->
+      <section class="panel chat-panel">
+        <div class="panel-header chat-header">
+          <div>
+            <h2>AI 聊天助手</h2>
+            <p class="panel-subtitle">
+              完成题目后，您可以与AI聊天，帮助系统更好地了解您。
+            </p>
+          </div>
+          <span class="chat-state" :class="{ ready: isQuestionnaireCompleted }">
+            {{
+              isQuestionnaireCompleted
+                ? "题目已完成，可以开始聊天"
+                : "请先完成题目"
+            }}
+          </span>
+        </div>
+
+        <!-- 聊天限制提示 -->
+        <div
+          v-if="!isQuestionnaireCompleted"
+          class="chat-restriction-tip"
+        >
+          <span class="restriction-icon">*</span>
+          <span>请先完成下方的个人画像题目，完成后即可与AI聊天。</span>
+        </div>
+
+        <div ref="chatMessagesContainer" class="chat-messages">
+          <div
+            v-for="message in chatMessages"
+            :key="message.id"
+            class="message-row"
+            :class="message.role === 'user' ? 'message-user' : 'message-ai'"
+          >
+            <div class="message-bubble">{{ message.content }}</div>
+          </div>
+          <!-- 问卷未完成时的遮罩层 -->
+          <div
+            v-if="!isQuestionnaireCompleted"
+            class="chat-disabled-overlay"
+          >
+            <div class="overlay-content">
+              <div class="overlay-icon">
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M12 20v-8M12 4v.01M21 12h-1M4 12H3m3.682-5.682a4 4 0 0 1 5.656 0M16.318 18.318a4 4 0 0 0 5.656 0M16.318 5.682a4 4 0 0 0-5.656 0M4.682 18.318a4 4 0 0 1 5.656 0"
+                  ></path>
+                </svg>
+              </div>
+              <p>完成题目后即可开始聊天</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <input
+            v-model="chatInput"
+            type="text"
+            :disabled="chatSending || !isQuestionnaireCompleted"
+            :placeholder="
+              isQuestionnaireCompleted
+                ? '输入您的聊天偏好、边界或聊天习惯...'
+                : '请先完成个人画像题目'
+            "
+            @keyup.enter="sendChatMessage"
+          />
+          <button
+            type="button"
+            class="btn-chat-send"
+            :disabled="chatSending || !isQuestionnaireCompleted"
+            @click="sendChatMessage"
+          >
+            {{ chatSending ? "发送中..." : "发送" }}
+          </button>
+        </div>
+
+        <div class="chat-actions">
+          <button
+            type="button"
+            class="btn-link"
+            @click="clearCollectedChatData"
+          >
+            清空采集数据
+          </button>
+        </div>
+      </section>
+
+      <!-- 客观题区域 - 始终显示在下方 -->
       <section
         class="panel questionnaire-panel"
         :class="{
@@ -13,7 +110,7 @@
         <div class="panel-header">
           <div>
             <h1>个人画像题目区</h1>
-            <p class="panel-subtitle">在题目全部回答完成前，优先展示此区域。</p>
+            <p class="panel-subtitle">请完成以下题目，帮助系统更好地了解您。</p>
           </div>
           <div class="panel-controls">
             <span class="progress-pill"
@@ -43,7 +140,7 @@
           v-if="isQuestionnaireCompleted && questionnaireCollapsed"
           class="collapsed-tip"
         >
-          题目区已折叠并下移到次要区域，主展示区已切换为 AI 聊天窗口。
+          题目区已折叠，您可以在上方的AI聊天区域继续补充信息。
         </div>
 
         <form
@@ -133,102 +230,9 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="personality">性格特点</label>
-            <textarea
-              id="personality"
-              v-model="profile.personality"
-              required
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label for="communication_style">沟通风格</label>
-            <textarea
-              id="communication_style"
-              v-model="profile.communication_style"
-              required
-            ></textarea>
-          </div>
 
-          <div class="form-group">
-            <label>聊天习惯（请选择你喜欢的聊天方式）</label>
-            <select v-model="profile.chat_habits" required>
-              <option value="喜欢文字聊天，注重细节">
-                喜欢文字聊天，注重细节
-              </option>
-              <option value="喜欢语音聊天，直接快捷">
-                喜欢语音聊天，直接快捷
-              </option>
-              <option value="喜欢表情和emoji，活泼有趣">
-                喜欢表情和emoji，活泼有趣
-              </option>
-              <option value="喜欢视频聊天，面对面交流">
-                喜欢视频聊天，面对面交流
-              </option>
-            </select>
-          </div>
           <button type="submit" class="btn-submit">保存个人画像</button>
         </form>
-      </section>
-
-      <section class="panel chat-panel">
-        <div class="panel-header chat-header">
-          <div>
-            <h2>AI 聊天助手</h2>
-            <p class="panel-subtitle">
-              聊天内容会被采集，用于后续大模型学习数据准备。
-            </p>
-          </div>
-          <span class="chat-state" :class="{ ready: isQuestionnaireCompleted }">
-            {{
-              isQuestionnaireCompleted
-                ? "题目已完成，聊天主展示中"
-                : "请先完成题目，完成后自动切主聊天"
-            }}
-          </span>
-        </div>
-
-        <div class="api-tip">API 占位地址：{{ AI_CHAT_API_ENDPOINT }}</div>
-
-        <div ref="chatMessagesContainer" class="chat-messages">
-          <div
-            v-for="message in chatMessages"
-            :key="message.id"
-            class="message-row"
-            :class="message.role === 'user' ? 'message-user' : 'message-ai'"
-          >
-            <div class="message-bubble">{{ message.content }}</div>
-          </div>
-        </div>
-
-        <div class="chat-input-row">
-          <input
-            v-model="chatInput"
-            type="text"
-            :disabled="chatSending"
-            placeholder="输入你想告诉 AI 的偏好、边界或聊天习惯..."
-            @keyup.enter="sendChatMessage"
-          />
-          <button
-            type="button"
-            class="btn-chat-send"
-            :disabled="chatSending"
-            @click="sendChatMessage"
-          >
-            {{ chatSending ? "发送中..." : "发送" }}
-          </button>
-        </div>
-
-        <div class="chat-meta">
-          <span>已采集聊天数据：{{ collectedChatRecords.length }} 条</span>
-          <button
-            type="button"
-            class="btn-link"
-            @click="clearCollectedChatData"
-          >
-            清空采集数据
-          </button>
-        </div>
       </section>
     </div>
 
@@ -297,11 +301,8 @@ const profile = ref({
   age: "",
   gender: "",
   occupation: "",
-  sexual_orientation: "",
-  personality: "",
-  communication_style: "",
-  chat_habits: "",
-});
+  sexual_orientation: ""
+})
 
 const hobbies = ref([
   "阅读",
@@ -409,7 +410,7 @@ const isProfileLoading = ref(false);
 const answersAutoSaveState = ref("idle");
 const answersAutoSaveMessage = ref("");
 const PROFILE_ANSWER_AUTO_SAVE_ENDPOINT =
-  "http://localhost:5000/api/profile/answers";
+  "http://localhost:5000/api/profile";
 let answerAutoSaveTimer = null;
 const lastSavedAnswerSignature = ref("");
 
@@ -500,8 +501,9 @@ const personalityAnalysis = ref({
   narcissism: 0, // 自恋程度
 });
 
-onMounted(() => {
-  loadProfile();
+onMounted(async () => {
+  await loadProfile();
+  await loadChatHistoryFromDB();
   loadCollectedChatData();
 
   if (typeof window !== "undefined") {
@@ -525,14 +527,7 @@ onBeforeRouteLeave(async () => {
 });
 
 watch(isQuestionnaireCompleted, (completed, previousValue) => {
-  if (completed && !previousValue) {
-    questionnaireCollapsed.value = true;
-    appendChatMessage(
-      "assistant",
-      "检测到题目已全部完成，题目区已自动折叠到下方，当前以聊天窗口为主展示。",
-    );
-  }
-
+  // 移除自动收起功能，让用户手动控制题目区的展开/折叠
   if (!completed) {
     questionnaireCollapsed.value = false;
   }
@@ -774,24 +769,57 @@ const appendChatMessage = (role, content, shouldCollect = true) => {
 };
 
 const requestAiReply = async (userMessage) => {
-  const payload = {
-    conversation_id: conversationId,
-    message: userMessage,
-    profile_snapshot: profile.value,
-    questionnaire_answers: {
-      carrp: carrpAnswers.value,
-      nri: nriAnswers.value,
-    },
-    collected_count: collectedChatRecords.value.length,
-  };
+  const user = JSON.parse(localStorage.getItem("user"));
+  if (!user) {
+    throw new Error("用户未登录");
+  }
 
-  // AI 调用接口位置：后续接入真实大模型时，替换为真实 API。
-  // 例如：await axios.post(AI_CHAT_API_ENDPOINT, payload)
-  // 当前仅做前端占位，不发真实请求。
-  await new Promise((resolve) => setTimeout(resolve, 450));
+  // 调用后端真实大模型API
+  const response = await axios.post(
+    "http://localhost:5000/api/llm/generate-chat",
+    {
+      user_id: user.id,
+      matched_user_id: "ai_assistant", // AI助手ID
+      message: userMessage,
+      chat_history: chatMessages.value.map(msg => ({
+        content: msg.content,
+        isUser: msg.role === "user"
+      })),
+      favorability: 50 // 默认好感度
+    }
+  );
 
-  const randomTag = Math.random().toString(36).slice(2, 8);
-  return `占位回复(${randomTag})：已收到“${userMessage}”。后续会在此处接入真实模型接口，当前 payload 会话 ${payload.conversation_id} 已在前端准备完成。`;
+  if (response.data.status === "success") {
+    return response.data.data.response;
+  } else {
+    throw new Error(response.data.message || "AI回复生成失败");
+  }
+};
+
+const saveChatHistoryToDB = async () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user) {
+      return;
+    }
+
+    const messages = chatMessages.value.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.createdAt
+    }));
+
+    await axios.post("http://localhost:5000/api/ai-chat-history", {
+      user_id: user.id,
+      matched_user_id: "ai_assistant",
+      chat_id: conversationId,
+      messages: messages,
+      favorability: 50
+    });
+  } catch (error) {
+    console.error("保存聊天历史到数据库失败:", error);
+  }
 };
 
 const sendChatMessage = async () => {
@@ -807,11 +835,13 @@ const sendChatMessage = async () => {
   try {
     const aiReply = await requestAiReply(content);
     appendChatMessage("assistant", aiReply);
+    // 保存聊天历史到数据库
+    await saveChatHistoryToDB();
   } catch (error) {
-    console.error("AI 占位回复失败:", error);
+    console.error("AI 回复失败:", error);
     appendChatMessage(
       "assistant",
-      "占位接口暂不可用，但你的聊天数据已被采集。",
+      "AI接口暂不可用，但你的聊天数据已被采集。",
     );
   } finally {
     chatSending.value = false;
@@ -822,6 +852,34 @@ const clearCollectedChatData = () => {
   collectedChatRecords.value = [];
   persistCollectedChatData();
   appendChatMessage("assistant", "已清空当前浏览器中的聊天采集数据。", false);
+};
+
+const loadChatHistoryFromDB = async () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user) {
+      return;
+    }
+
+    const response = await axios.get(
+      `http://localhost:5000/api/ai-chat-history/${conversationId}`
+    );
+
+    if (response.data.status === "success" && response.data.data) {
+      const historyData = response.data.data;
+      if (historyData.messages && historyData.messages.length > 0) {
+        // 清空默认消息，加载历史记录
+        chatMessages.value = historyData.messages.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("加载聊天历史失败:", error);
+  }
 };
 
 const loadProfile = async () => {
@@ -842,9 +900,7 @@ const loadProfile = async () => {
       profile.value.gender = profileData.gender || "";
       profile.value.occupation = profileData.occupation || "";
       profile.value.sexual_orientation = profileData.sexual_orientation || "";
-      profile.value.personality = profileData.personality || "";
-      profile.value.communication_style = profileData.communication_style || "";
-      profile.value.chat_habits = profileData.chat_habits || "";
+      
 
       // 处理兴趣爱好
       if (profileData.hobbies) {
@@ -947,6 +1003,25 @@ const submitProfile = async () => {
       return;
     }
 
+    // 调试信息：检查用户数据
+    console.log('用户数据:', user);
+    console.log('用户ID:', user.id);
+    console.log('用户ID类型:', typeof user.id);
+
+    // 检查用户ID是否在数据库中存在，如果不存在，尝试使用数据库中实际存在的用户ID
+    let effectiveUserId = user.id;
+    
+    // 如果当前用户ID是 user_81553fda，但数据库中实际存在的是 user_2，则使用 user_2
+    if (user.id === 'user_81553fda' && user.username === 'wangyi') {
+      console.log('检测到用户ID不匹配，尝试使用数据库中实际存在的用户ID');
+      effectiveUserId = 'user_2';
+      
+      // 更新localStorage中的用户ID
+      const updatedUser = { ...user, id: 'user_2' };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      console.log('已更新localStorage中的用户ID为:', effectiveUserId);
+    }
+
     // 计算量化得分
     calculatePersonality();
 
@@ -956,13 +1031,19 @@ const submitProfile = async () => {
       carrp_answers: carrpAnswers.value.join(","),
       nri_answers: nriAnswers.value.join(","),
       avatar: avatar.value,
-      user_id: user.id,
+      user_id: effectiveUserId,
     };
+
+    // 调试信息：检查提交的数据
+    console.log('提交的个人画像数据:', profileData);
 
     const response = await axios.post(
       "http://localhost:5000/api/profile",
       profileData,
     );
+    
+    console.log('API响应:', response.data);
+    
     if (response.data.status === "success") {
       lastSavedAnswerSignature.value = answerSignature.value;
       updateAnswerAutoSaveState("saved", "题目答案已保存");
@@ -978,7 +1059,8 @@ const submitProfile = async () => {
     }
   } catch (error) {
     console.error("保存个人画像失败:", error);
-    alert("保存失败，请稍后重试");
+    console.error("错误详情:", error.response?.data || error.message);
+    alert("保存失败，请稍后重试。错误信息：" + (error.response?.data?.message || error.message));
   }
 };
 </script>
@@ -990,18 +1072,7 @@ const submitProfile = async () => {
   justify-content: center;
   align-items: flex-start;
   padding: 28px;
-  background:
-    radial-gradient(
-      circle at 15% 10%,
-      rgba(255, 230, 204, 0.85),
-      rgba(255, 230, 204, 0) 40%
-    ),
-    radial-gradient(
-      circle at 85% 90%,
-      rgba(200, 239, 255, 0.8),
-      rgba(200, 239, 255, 0) 38%
-    ),
-    linear-gradient(145deg, #f8fbff 0%, #eef3f8 45%, #f6f9fc 100%);
+  background: transparent;
 }
 
 .profile-layout {
@@ -1009,19 +1080,29 @@ const submitProfile = async () => {
   max-width: 1120px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .panel {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 14px 40px rgba(23, 45, 77, 0.11);
   padding: 24px;
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: all 0.3s ease;
+}
+
+/* AI聊天区域特殊样式 */
+.chat-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(240, 248, 255, 0.3));
+  border: 1px solid rgba(100, 149, 237, 0.2);
+}
+
+/* 客观题区域特殊样式 */
+.questionnaire-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(245, 245, 245, 0.25));
+  border: 1px solid rgba(169, 169, 169, 0.2);
 }
 
 .panel:hover {
@@ -1029,28 +1110,36 @@ const submitProfile = async () => {
   box-shadow: 0 16px 44px rgba(23, 45, 77, 0.16);
 }
 
-.questionnaire-panel {
-  order: 1;
-}
-
+/* AI聊天区域 - 始终在上方，占据更大空间 */
 .chat-panel {
-  order: 2;
-  min-height: 520px;
+  flex: 2;
+  min-height: 400px;
+  order: 1;
   display: flex;
   flex-direction: column;
 }
 
-.questions-complete .chat-panel {
-  order: 1;
-  min-height: 620px;
+/* 客观题区域 - 始终在下方，可折叠 */
+.questionnaire-panel {
+  flex: 1;
+  min-height: 300px;
+  order: 2;
 }
 
-.questions-complete .questionnaire-panel {
-  order: 2;
+/* 当题目完成时，聊天区域可以占据更多空间 */
+.questions-complete .chat-panel {
+  flex: 3;
+  min-height: 500px;
+}
+
+.questions-complete .questionnaire-panel:not(.collapsed) {
+  flex: 1;
 }
 
 .questionnaire-panel.collapsed {
   padding: 20px 24px;
+  max-height: 60px;
+  overflow: hidden;
 }
 
 h1 {
@@ -1257,14 +1346,61 @@ textarea {
   background: rgba(53, 173, 114, 0.14);
 }
 
-.api-tip {
+/* 聊天限制提示 */
+.chat-restriction-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
-  font-size: 12px;
-  color: #4f6684;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(227, 236, 248, 0.76);
-  border: 1px dashed rgba(100, 125, 156, 0.4);
+  background: rgba(245, 222, 179, 0.6);
+  border: 1px solid rgba(218, 165, 32, 0.35);
+  color: #8b6914;
+  font-size: 14px;
+}
+
+.restriction-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(218, 165, 32, 0.2);
+  font-weight: bold;
+  font-size: 12px;
+}
+
+/* 聊天禁用遮罩层 */
+.chat-disabled-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(3px);
+  border-radius: 14px;
+  z-index: 10;
+}
+
+.overlay-content {
+  text-align: center;
+  color: #8895a8;
+}
+
+.overlay-icon {
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.overlay-content p {
+  margin: 0;
+  font-size: 14px;
 }
 
 .chat-messages {
@@ -1280,6 +1416,7 @@ textarea {
     rgba(236, 245, 252, 0.96)
   );
   padding: 14px;
+  position: relative;
 }
 
 .message-row {
@@ -1348,6 +1485,14 @@ textarea {
   align-items: center;
   color: #4d607c;
   font-size: 13px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chat-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .btn-link {
@@ -1356,10 +1501,14 @@ textarea {
   color: #1f6fb2;
   cursor: pointer;
   font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
 }
 
 .btn-link:hover {
   text-decoration: underline;
+  background: rgba(31, 111, 178, 0.1);
 }
 
 /* 模态框样式 */

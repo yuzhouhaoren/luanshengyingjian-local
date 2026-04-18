@@ -233,12 +233,19 @@ import { ref, onMounted, computed, watch, onUnmounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import axios from "axios";
 
+// 根据性别获取默认头像
+const getDefaultAvatar = (gender) => {
+  if (gender === '男') {
+    return 'http://localhost:5000/avatars/男.jpg'
+  } else {
+    return 'http://localhost:5000/avatars/女.jpg'
+  }
+}
+
 const router = useRouter();
 const route = useRoute();
 const user = ref(null);
-const userAvatar = ref(
-  "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=default%20user%20avatar&image_size=square",
-);
+const userAvatar = ref(getDefaultAvatar('男'));
 const bgCanvas = ref(null);
 const sidebarOpen = ref(false);
 const mobileMenuOpen = ref(false);
@@ -290,8 +297,7 @@ const checkUserStatus = async () => {
     await fetchNotificationCount(user.value.id);
   } else {
     user.value = null;
-    userAvatar.value =
-      "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=default%20user%20avatar&image_size=square";
+    userAvatar.value = getDefaultAvatar('男');
     notificationCount.value = 0;
   }
 };
@@ -313,6 +319,16 @@ const fetchNotificationCount = async (userId) => {
 
 // 获取用户头像
 const fetchUserAvatar = async (userId) => {
+  // 优先使用localStorage中的头像（如果存在）
+  const savedUser = localStorage.getItem("user");
+  if (savedUser) {
+    const userObj = JSON.parse(savedUser);
+    if (userObj.avatar) {
+      userAvatar.value = userObj.avatar;
+      return;
+    }
+  }
+
   try {
     const response = await axios.get(
       `http://localhost:5000/api/profile/${userId}`,
@@ -322,14 +338,18 @@ const fetchUserAvatar = async (userId) => {
       if (profile.avatar) {
         userAvatar.value = `http://localhost:5000/avatars/${profile.avatar}`;
       } else {
-        userAvatar.value =
-          "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=default%20user%20avatar&image_size=square";
+        userAvatar.value = getDefaultAvatar(profile.gender || '男');
       }
     }
   } catch (error) {
     console.error("获取用户头像失败:", error);
-    userAvatar.value =
-      "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=default%20user%20avatar&image_size=square";
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      const userObj = JSON.parse(savedUser);
+      userAvatar.value = getDefaultAvatar(userObj.gender || '男');
+    } else {
+      userAvatar.value = getDefaultAvatar('男');
+    }
   }
 };
 
