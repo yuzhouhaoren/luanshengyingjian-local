@@ -50,7 +50,7 @@
             <p>暂无匹配结果</p>
           </div>
           <div v-else class="message-item" v-for="match in matchResults" :key="match.id">
-            <div class="message-avatar">{{ match.matched_user_name.charAt(0) }}</div>
+            <img :src="match.avatar || getDefaultAvatar(match.gender || '男')" alt="头像" class="message-avatar" />
             <div class="message-info">
               <h4>{{ match.matched_user_name }}</h4>
               <p>交友目的：{{ match.intent_type || '朋友' }}</p>
@@ -66,7 +66,7 @@
             <p>暂无交友申请</p>
           </div>
           <div v-else class="message-item" v-for="request in friendRequests" :key="request.id">
-            <div class="message-avatar">{{ request.from_user_name.charAt(0) }}</div>
+            <img :src="request.avatar || getDefaultAvatar(request.gender || '男')" alt="头像" class="message-avatar" />
             <div class="message-info">
               <h4>{{ request.from_user_name }}</h4>
               <p>交友目的：{{ request.intent_type || '朋友' }}</p>
@@ -283,9 +283,18 @@ const loadFriendRequests = async () => {
   }
 }
 
-const toggleMessages = () => {
+const toggleMessages = async () => {
   showMessages.value = !showMessages.value
   if (showMessages.value) {
+    notificationCount.value = 0
+    window.dispatchEvent(new Event('notifications-read'))
+    
+    try {
+      await axios.post(`http://localhost:5000/api/notifications/read/${user.value.id}`)
+    } catch (error) {
+      console.error('标记消息已读失败:', error)
+    }
+    
     loadMatchResults()
     loadFriendRequests()
   }
@@ -678,13 +687,7 @@ onMounted(() => {
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: bold;
+  object-fit: cover;
   flex-shrink: 0;
 }
 
