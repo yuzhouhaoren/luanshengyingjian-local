@@ -1,11 +1,27 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import importlib
 from typing import List, Optional, Tuple
 
 import numpy as np
 from config import SETTINGS
 from db.crud import MatchRecord, UserFeature, load_user_features, save_match_records
 from model.llm_embedder import generate_match_reason
+
+
+def _load_dual_tower_similarity():
+    for module_name in ("model.dual_tower_model", "model.dual_tower"):
+        try:
+            module = importlib.import_module(module_name)
+            func = getattr(module, "dual_tower_similarity", None)
+            if callable(func):
+                return func
+        except Exception:
+            continue
+    return None
+
+
+dual_tower_similarity = _load_dual_tower_similarity()
 
 
 @dataclass(frozen=True)
@@ -98,6 +114,35 @@ def _cosine_similarity(vector_a: np.ndarray, vector_b: np.ndarray) -> Optional[f
     return max(-1.0, min(1.0, score))
 
 
+#使用双塔打分
+def _compute_match_score(seeker: UserFeature, candidate: UserFeature) -> Optional[float]:
+    if dual_tower_similarity is not None:
+        try:
+            score = dual_tower_similarity(
+                seeker_profile_vector=seeker.profile_vector,
+                seeker_intent_vector=seeker.vector,
+                candidate_profile_vector=candidate.profile_vector,
+                candidate_intent_vector=candidate.vector,
+                embed_dim=int(getattr(SETTINGS, "dual_tower_embed_dim", 64)),
+                seed=int(getattr(SETTINGS, "dual_tower_seed", 42)),
+                profile_weight=float(getattr(SETTINGS, "dual_tower_profile_weight", 0.6)),
+                intent_weight=float(getattr(SETTINGS, "dual_tower_intent_weight", 0.4)),
+            )
+            if score is not None:
+                return max(-1.0, min(1.0, float(score)))
+        except TypeError:
+            try:
+                score = dual_tower_similarity(seeker.vector, candidate.vector)
+                if score is not None:
+                    return max(-1.0, min(1.0, float(score)))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    return _cosine_similarity(seeker.vector, candidate.vector)
+
+
 #为单个用户构建候选匹配记录
 def _build_records_for_user(
     seeker: UserFeature,
@@ -117,7 +162,7 @@ def _build_records_for_user(
         if intent_type == "伴侣" and not _is_partner_candidate_allowed(seeker, candidate):
             continue
 
-        score = _cosine_similarity(seeker.vector, candidate.vector)
+        score = _compute_match_score(seeker, candidate)
         if score is None:
             continue
 
@@ -173,6 +218,7 @@ def match_and_save_for_user(
     intent_type: str,
     apply_min_score: bool = False,
     top_k: int = 1,
+    clear_existing_pending: bool = True,
 ) -> MatchEngineResult:
     normalized_intent = _normalize_intent_type(intent_type)
     features = load_user_features(intent_type=normalized_intent, only_pool_users=True)
@@ -196,7 +242,7 @@ def match_and_save_for_user(
         apply_min_score=apply_min_score,
     )
 
-    generated = save_match_records(records, clear_existing_pending=True)
+    generated = save_match_records(records, clear_existing_pending=bool(clear_existing_pending))
     return MatchEngineResult(
         intent_type=normalized_intent,
         users_involved=len(features),
