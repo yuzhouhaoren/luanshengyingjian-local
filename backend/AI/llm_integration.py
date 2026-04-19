@@ -1,18 +1,69 @@
-import requests
 import json
+import os
+from pathlib import Path
+
+import requests
+from dotenv import load_dotenv
+
+
+# Load backend/.env so local development can configure API keys without shell exports.
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(BACKEND_DIR / ".env")
+
+
+def _to_int(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_bool(value, default):
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 class LLMIntegration:
     def __init__(self):
-        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        self.api_key = "sk-70f4585cc18047fc8ecc50682eb330de"
-        self.model_name = "qwen3.5-flash"
+        self.base_url = os.getenv(
+            "DASHSCOPE_BASE_URL",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        ).rstrip("/")
+        self.api_key = (
+            os.getenv("DASHSCOPE_API_KEY")
+            or os.getenv("QWEN_API_KEY")
+            or ""
+        ).strip()
+        self.model_name = os.getenv("DASHSCOPE_MODEL", "qwen3.5-flash").strip() or "qwen3.5-flash"
+        self.request_timeout_seconds = _to_int(os.getenv("DASHSCOPE_TIMEOUT_SECONDS", "30"), 30)
+        self.offline_fallback_enabled = _to_bool(
+            os.getenv("DASHSCOPE_OFFLINE_FALLBACK", "true"),
+            True,
+        )
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        if self.api_key:
+            self.headers["Authorization"] = f"Bearer {self.api_key}"
+
+    def _offline_response(self, max_tokens=100):
+        # Keep local fallback short to match the existing UI expectations.
+        if int(max_tokens) <= 60:
+            return "离线模式：已收到，我在认真听你说。"
+        return "离线模式：我已经收到你的内容，当前未配置或未连通云端模型，先用本地兜底回复保证流程可用。"
     
     def generate_response(self, prompt, max_tokens=100):
         """生成大模型响应"""
+        if not self.api_key:
+            if self.offline_fallback_enabled:
+                return self._offline_response(max_tokens=max_tokens)
+            return "Error: DASHSCOPE_API_KEY is not configured"
+
         payload = {
             "model": self.model_name,
             "messages": [
@@ -28,15 +79,20 @@ class LLMIntegration:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
-                data=json.dumps(payload)
+                data=json.dumps(payload),
+                timeout=self.request_timeout_seconds,
             )
             
             if response.status_code == 200:
                 result = response.json()
                 return result['choices'][0]['message']['content']
             else:
+                if self.offline_fallback_enabled:
+                    return self._offline_response(max_tokens=max_tokens)
                 return f"Error: {response.status_code} - {response.text}"
         except Exception as e:
+            if self.offline_fallback_enabled:
+                return self._offline_response(max_tokens=max_tokens)
             return f"Error: {str(e)}"
     
     def generate_post(self, user_profile, intent_type):
@@ -60,8 +116,9 @@ class LLMIntegration:
         
         return self.generate_response(prompt, max_tokens=300)
     
-    def generate_chat_response(self, user_message, user_profile, chat_history=[], favorability=0):
+    def generate_chat_response(self, user_message, user_profile, chat_history=None, favorability=0):
         """生成聊天回复"""
+        chat_history = chat_history or []
         prompt = f"你是一个基于用户画像的聊天助手，根据以下用户信息和聊天历史，生成一个自然的回复：\n"
         prompt += f"用户信息：{json.dumps(user_profile, ensure_ascii=False)}\n"
         prompt += f"当前好感度：{favorability}\n"

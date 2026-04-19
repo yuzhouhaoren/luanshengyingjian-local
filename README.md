@@ -100,10 +100,14 @@
 2. **安装后端依赖**
    ```bash
    cd backend
-   pip install flask flask-cors
+   pip install -r requirements.txt
    ```
 
-3. **安装前端依赖**
+3. **配置大模型 API 密钥（可选）**
+   - 在 `backend/.env` 中填写 `DASHSCOPE_API_KEY`
+   - 未配置密钥时系统会启用离线兜底回复（`DASHSCOPE_OFFLINE_FALLBACK=true`），保证流程可用
+
+4. **安装前端依赖**
    ```bash
    cd ../frontend
    npm install
@@ -159,7 +163,9 @@
 
 ## 注意事项
 
-1. **API密钥**：系统使用阿里云 dashscope API，需要确保API密钥有效
+1. **API密钥**：系统支持两种模式：
+   - 云端模式：通过环境变量 `DASHSCOPE_API_KEY` 配置，不要在代码中硬编码密钥
+   - 离线模式：未配置密钥时使用 `DASHSCOPE_OFFLINE_FALLBACK=true` 返回本地兜底内容
 2. **数据持久化**：聊天记录和好感度数据会保存在数据库中
 3. **权限控制**：系统会防止用户与自己的帖子机器人聊天
 4. **性能优化**：系统实现了缓存机制，提高响应速度

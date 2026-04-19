@@ -9,6 +9,18 @@ from db.crud import MatchRecord, UserFeature, load_user_features, save_match_rec
 from model.llm_embedder import generate_match_reason
 
 
+def _load_trained_dual_tower_similarity():
+    #训练版双塔推理入口：缺模块时保持可回退。
+    try:
+        module = importlib.import_module("train.inference")
+        func = getattr(module, "trained_dual_tower_similarity", None)
+        if callable(func):
+            return func
+    except Exception:
+        return None
+    return None
+
+
 def _load_dual_tower_similarity():
     for module_name in ("model.dual_tower_model", "model.dual_tower"):
         try:
@@ -22,6 +34,7 @@ def _load_dual_tower_similarity():
 
 
 dual_tower_similarity = _load_dual_tower_similarity()
+trained_dual_tower_similarity = _load_trained_dual_tower_similarity()
 
 
 @dataclass(frozen=True)
@@ -116,6 +129,24 @@ def _cosine_similarity(vector_a: np.ndarray, vector_b: np.ndarray) -> Optional[f
 
 #使用双塔打分
 def _compute_match_score(seeker: UserFeature, candidate: UserFeature) -> Optional[float]:
+    if bool(getattr(SETTINGS, "use_trained_dual_tower", False)) and trained_dual_tower_similarity is not None:
+        try:
+            score = trained_dual_tower_similarity(
+                seeker_profile_vector=seeker.profile_vector,
+                seeker_intent_vector=seeker.vector,
+                candidate_profile_vector=candidate.profile_vector,
+                candidate_intent_vector=candidate.vector,
+                intent_type=seeker.intent_type,
+                artifacts_root=getattr(SETTINGS, "dual_tower_artifacts_root", ""),
+                map_location=str(getattr(SETTINGS, "dual_tower_infer_device", "cpu") or "cpu"),
+                force_reload=bool(getattr(SETTINGS, "dual_tower_force_reload", False)),
+            )
+            if score is not None:
+                return max(-1.0, min(1.0, float(score)))
+        except Exception:
+            pass
+
+    #无训练工件或推理失败时，回退到当前无训练双塔实现。
     if dual_tower_similarity is not None:
         try:
             score = dual_tower_similarity(

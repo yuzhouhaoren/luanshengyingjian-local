@@ -365,6 +365,172 @@ def load_user_features(
 
         return results
 
+def build_labeled_pairs_from_db(
+    intent_type: str,
+    negative_ratio: float = 1.0,
+    random_seed: int = 42,
+    include_rejected: bool = True,
+    only_pool_users: bool = True,
+) -> List[Dict[str, Any]]:
+    normalized_intent = _normalize_intent_type(intent_type)
+    if normalized_intent is None:
+        return []
+
+    features = load_user_features(
+        intent_type=normalized_intent,
+        only_pool_users=only_pool_users,
+    )
+    if len(features) <= 1:
+        return []
+
+    feature_map: Dict[str, UserFeature] = {
+        item.user_id: item for item in features if item.user_id
+    }
+    if len(feature_map) <= 1:
+        return []
+
+    all_candidate_ids = list(feature_map.keys())
+    rng = np.random.default_rng(int(random_seed))
+
+    if normalized_intent == "朋友":
+        intent_aliases = ("朋友", "志趣相投的朋友", "intent_志趣相投的朋友")
+    else:
+        intent_aliases = ("伴侣", "intent_伴侣")
+
+    placeholders = ",".join("?" for _ in intent_aliases)
+    explicit_pairs: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    interacted_by_seeker: Dict[str, set[str]] = {}
+
+    #从数据库中获取匹配数据
+    with get_db_connection() as conn:
+        ensure_match_results_table(conn)
+        columns = _table_columns(conn, "match_results")
+        required = {"user_id", "matched_user_id", "intent_type", "status"}
+        if not required.issubset(columns):
+            return []
+
+        rows = conn.execute(
+            f"""
+            SELECT user_id, matched_user_id, intent_type, status, created_at
+            FROM match_results
+            WHERE intent_type IN ({placeholders})
+              AND status IN ('accepted', 'rejected')
+            """,
+            list(intent_aliases),
+        ).fetchall()
+
+    for row in rows:
+        seeker_id = str(_row_get(row, "user_id", "") or "")
+        candidate_id = str(_row_get(row, "matched_user_id", "") or "")
+        status = str(_row_get(row, "status", "") or "").strip().lower()
+
+        if not seeker_id or not candidate_id:
+            continue
+        if seeker_id == candidate_id:
+            continue
+        if seeker_id not in feature_map or candidate_id not in feature_map:
+            continue
+
+        interacted_by_seeker.setdefault(seeker_id, set()).add(candidate_id)
+
+        label: Optional[float] = None
+        source = ""
+        priority = 0
+        if status == "accepted":
+            label = 1.0
+            source = "accepted"
+            priority = 3
+        elif status == "rejected" and include_rejected:
+            label = 0.0
+            source = "rejected"
+            priority = 2
+        else:
+            continue
+
+        key = (seeker_id, candidate_id, normalized_intent)
+        old = explicit_pairs.get(key)
+        if old is None or priority > int(old.get("_priority", 0)):
+            explicit_pairs[key] = {
+                "label": label,
+                "source": source,
+                "_priority": priority,
+            }
+    
+    #统计每个用户的正样本数量
+    positive_count_by_seeker: Dict[str, int] = {}
+    for (seeker_id, _candidate_id, _intent), meta in explicit_pairs.items():
+        if float(meta.get("label", 0.0)) > 0.5:
+            positive_count_by_seeker[seeker_id] = positive_count_by_seeker.get(seeker_id, 0) + 1
+
+    samples: List[Dict[str, Any]] = []
+
+    #把发起者特征、候选人特征、标签、样本来源组装成标准样本格式，加入总样本列表。
+    def append_sample(
+        seeker: UserFeature,
+        candidate: UserFeature,
+        label: float,
+        source: str,
+    ) -> None:
+        samples.append(
+            {
+                "seeker_id": seeker.user_id,
+                "candidate_id": candidate.user_id,
+                "intent_type": normalized_intent,
+                "label": float(label),
+                "source": source,
+                "seeker_profile_vector": seeker.profile_vector,
+                "seeker_intent_vector": seeker.vector,
+                "candidate_profile_vector": candidate.profile_vector,
+                "candidate_intent_vector": candidate.vector,
+            }
+        )
+
+    for (seeker_id, candidate_id, _intent), meta in explicit_pairs.items():
+        append_sample(
+            feature_map[seeker_id],
+            feature_map[candidate_id],
+            float(meta["label"]),
+            str(meta["source"]),
+        )
+   
+    #生成随机负样本
+    ratio = max(0.0, float(negative_ratio))
+    for seeker_id, pos_count in positive_count_by_seeker.items():
+        target_neg = int(np.ceil(ratio * max(1, int(pos_count))))
+        if target_neg <= 0:
+            continue
+
+        blocked = set(interacted_by_seeker.get(seeker_id, set()))
+        blocked.add(seeker_id)
+        available = [cid for cid in all_candidate_ids if cid not in blocked]
+        if not available:
+            continue
+
+        if target_neg >= len(available):
+            chosen_ids = available
+        else:
+            chosen_ids = list(
+                rng.choice(
+                    np.asarray(available, dtype=object),
+                    size=target_neg,
+                    replace=False,
+                )
+            )
+
+        for candidate_id in chosen_ids:
+            key = (seeker_id, str(candidate_id), normalized_intent)
+            if key in explicit_pairs:
+                continue
+            append_sample(
+                feature_map[seeker_id],
+                feature_map[str(candidate_id)],
+                0.0,
+                "sampled_negative",
+            )
+    #返回训练用的用户列表
+    rng.shuffle(samples)
+    return samples
+
 
 def save_match_records(
     records: Sequence[MatchRecord],

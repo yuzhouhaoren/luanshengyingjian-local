@@ -1,11 +1,15 @@
 from .llm_embedder import ReasonInput, TinyLLMReasoner, generate_match_reason
 
+DualTowerConfig = None
+DualTowerScorer = None
+
 try:
-	from .dual_tower import DualTowerConfig, DualTowerScorer, dual_tower_similarity
+	from .dual_tower_model import dual_tower_similarity
 except Exception:
-	DualTowerConfig = None
-	DualTowerScorer = None
-	dual_tower_similarity = None
+	try:
+		from .dual_tower import DualTowerConfig, DualTowerScorer, dual_tower_similarity
+	except Exception:
+		dual_tower_similarity = None
 
 __all__ = [
 	"ReasonInput",

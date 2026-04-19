@@ -64,6 +64,12 @@ class Settings:
     dual_tower_seed: int           #双塔随机种子
     dual_tower_profile_weight: float
     dual_tower_intent_weight: float
+
+    #训练版双塔线上推理配置
+    use_trained_dual_tower: bool   #是否优先使用训练后的双塔模型
+    dual_tower_artifacts_root: Path   #训练工件根目录，包含 partner/friend 子目录
+    dual_tower_infer_device: str   #训练模型推理设备：cpu/cuda/mps
+    dual_tower_force_reload: bool  #每次请求是否强制重载工件（调试用）
     
     #调度参数
     scheduler_cron_days: str     #每周触发日，APScheduler day_of_week 格式
@@ -106,6 +112,15 @@ def get_settings() ->Settings:
         dual_tower_seed=_to_int(os.getenv("PAIRMODEL_DUAL_TOWER_SEED", "42"), 42),
         dual_tower_profile_weight=_to_float(os.getenv("PAIRMODEL_DUAL_TOWER_PROFILE_WEIGHT", "0.6"), 0.6),
         dual_tower_intent_weight=_to_float(os.getenv("PAIRMODEL_DUAL_TOWER_INTENT_WEIGHT", "0.4"), 0.4),
+        use_trained_dual_tower=_to_bool(os.getenv("PAIRMODEL_USE_TRAINED_DUAL_TOWER", "false"), False),
+        dual_tower_artifacts_root=Path(
+            os.getenv(
+                "PAIRMODEL_DUAL_TOWER_ARTIFACTS_ROOT",
+                str(PAIRMODEL_DIR / "artifacts" / "dual_tower"),
+            )
+        ),
+        dual_tower_infer_device=(os.getenv("PAIRMODEL_DUAL_TOWER_INFER_DEVICE", "cpu").strip().lower() or "cpu"),
+        dual_tower_force_reload=_to_bool(os.getenv("PAIRMODEL_DUAL_TOWER_FORCE_RELOAD", "false"), False),
 
         scheduler_cron_days=(os.getenv("PAIRMODEL_SCHEDULE_DAYS", "tue,fri").strip().lower() or "tue,fri"),
         scheduler_cron_hour=min(23, max(0, _to_int(os.getenv("PAIRMODEL_SCHEDULE_HOUR", "0"), 0))),

@@ -2,140 +2,154 @@
   <div class="match-pool-container">
     <!-- 正十二面体动画 -->
     <DodecahedronAnimation />
-    
-    
-      <h1>匹配池</h1>
-      
-      <div class="pool-content">
-        <div class="countdown-text">
-          <p class="countdown-label">距离下一次分配</p>
-          <div class="countdown-time">
-            <span class="time-unit">
-              <span class="time-value">{{ countdown.days }}</span>
-              <span class="time-label">天</span>
-            </span>
-            <span class="time-separator">:</span>
-            <span class="time-unit">
-              <span class="time-value">{{ countdown.hours }}</span>
-              <span class="time-label">时</span>
-            </span>
-            <span class="time-separator">:</span>
-            <span class="time-unit">
-              <span class="time-value">{{ countdown.minutes }}</span>
-              <span class="time-label">分</span>
-            </span>
+
+    <h1>匹配池</h1>
+
+    <div class="pool-content">
+      <div class="countdown-text">
+        <p class="countdown-label">距离下一次分配</p>
+        <div class="countdown-time">
+          <span class="time-unit">
+            <span class="time-value">{{ countdown.days }}</span>
+            <span class="time-label">天</span>
+          </span>
+          <span class="time-separator">:</span>
+          <span class="time-unit">
+            <span class="time-value">{{ countdown.hours }}</span>
+            <span class="time-label">时</span>
+          </span>
+          <span class="time-separator">:</span>
+          <span class="time-unit">
+            <span class="time-value">{{ countdown.minutes }}</span>
+            <span class="time-label">分</span>
+          </span>
+        </div>
+        <p class="match-schedule">匹配时间：每周二、周五 0:00</p>
+      </div>
+    </div>
+
+    <div class="match-results" v-if="matchResults.length > 0">
+      <h2>我的匹配结果</h2>
+      <div class="results-list">
+        <div
+          class="result-card"
+          v-for="result in matchResults"
+          :key="result.id"
+        >
+          <div class="result-avatar">
+            {{ result.matched_user_name.charAt(0) }}
           </div>
-          <p class="match-schedule">匹配时间：每周二、周五 0:00</p>
+          <div class="result-info">
+            <h3>{{ result.matched_user_name }}</h3>
+            <p>匹配度：{{ result.match_score }}%</p>
+            <p>交友目的：{{ result.intent_type || "朋友" }}</p>
+            <p>邮箱：{{ result.email }}</p>
+            <p class="match-time">{{ formatTime(result.created_at) }}</p>
+          </div>
         </div>
       </div>
-      
-      <div class="match-results" v-if="matchResults.length > 0">
-        <h2>我的匹配结果</h2>
-        <div class="results-list">
-          <div class="result-card" v-for="result in matchResults" :key="result.id">
-            <div class="result-avatar">{{ result.matched_user_name.charAt(0) }}</div>
-            <div class="result-info">
-              <h3>{{ result.matched_user_name }}</h3>
-              <p>匹配度：{{ result.match_score }}%</p>
-              <p>交友目的：{{ result.intent_type || '朋友' }}</p>
-              <p>邮箱：{{ result.email }}</p>
-              <p class="match-time">{{ formatTime(result.created_at) }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="no-results" v-else>
-        <p>暂无匹配结果，请等待下一次分配</p>
-      </div>
-    
+    </div>
+
+    <div class="no-results" v-else>
+      <p>暂无匹配结果，请等待下一次分配</p>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
-import DodecahedronAnimation from '../components/DodecahedronAnimation.vue'
+import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
+import axios from "axios";
+
+const DodecahedronAnimation = defineAsyncComponent(
+  () => import("../components/DodecahedronAnimation.vue"),
+);
 
 const countdown = ref({
   days: 0,
   hours: 0,
-  minutes: 0
-})
+  minutes: 0,
+});
 
-const matchResults = ref([])
-let timer = null
+const matchResults = ref([]);
+let timer = null;
 
 const calculateNextMatch = () => {
-  const now = new Date()
-  const dayOfWeek = now.getDay() // 0周日,1周一,2周二,3周三,4周四,5周五,6周六
-  const hours = now.getHours()
-  const minutes = now.getMinutes()
-  
-  let daysUntilNextMatch = 0
-  
-  if (dayOfWeek === 2) { // 周二
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0周日,1周一,2周二,3周三,4周四,5周五,6周六
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+
+  let daysUntilNextMatch = 0;
+
+  if (dayOfWeek === 2) {
+    // 周二
     // 无论几点，下一个匹配日都是本周五（3天后）
-    daysUntilNextMatch = 3
-  } else if (dayOfWeek === 5) { // 周五
+    daysUntilNextMatch = 3;
+  } else if (dayOfWeek === 5) {
+    // 周五
     // 无论几点，下一个匹配日都是下周二（4天后）
-    daysUntilNextMatch = 4
-  } else if (dayOfWeek < 2) { // 周日、周一
-    daysUntilNextMatch = 2 - dayOfWeek
-  } else if (dayOfWeek < 5) { // 周三、周四
-    daysUntilNextMatch = 5 - dayOfWeek
-  } else { // 周六
-    daysUntilNextMatch = 2 + (7 - dayOfWeek) // 2 + (7-6)=3
+    daysUntilNextMatch = 4;
+  } else if (dayOfWeek < 2) {
+    // 周日、周一
+    daysUntilNextMatch = 2 - dayOfWeek;
+  } else if (dayOfWeek < 5) {
+    // 周三、周四
+    daysUntilNextMatch = 5 - dayOfWeek;
+  } else {
+    // 周六
+    daysUntilNextMatch = 2 + (7 - dayOfWeek); // 2 + (7-6)=3
   }
-  
-  const nextMatch = new Date(now)
-  nextMatch.setDate(now.getDate() + daysUntilNextMatch)
-  nextMatch.setHours(0, 0, 0, 0) // 目标日的00:00
-  
-  const diff = nextMatch - now
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  const minutesLeft = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-  
+
+  const nextMatch = new Date(now);
+  nextMatch.setDate(now.getDate() + daysUntilNextMatch);
+  nextMatch.setHours(0, 0, 0, 0); // 目标日的00:00
+
+  const diff = nextMatch - now;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hoursLeft = Math.floor(
+    (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+  );
+  const minutesLeft = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
   countdown.value = {
     days: days,
     hours: hoursLeft,
-    minutes: minutesLeft
-  }
-}
+    minutes: minutesLeft,
+  };
+};
 
 const fetchMatchResults = async () => {
   try {
-    const userId = localStorage.getItem('userId')
-    if (!userId) return
-    
-    const response = await axios.get(`http://localhost:5000/api/matches/${userId}`)
-    if (response.data.status === 'success') {
-      matchResults.value = response.data.matches
+    const userId = localStorage.getItem("userId");
+    if (!userId) return;
+
+    const response = await axios.get(
+      `http://localhost:5000/api/matches/${userId}`,
+    );
+    if (response.data.status === "success") {
+      matchResults.value = response.data.matches;
     }
   } catch (error) {
-    console.error('获取匹配结果失败:', error)
+    console.error("获取匹配结果失败:", error);
   }
-}
+};
 
 const formatTime = (timestamp) => {
-  const date = new Date(timestamp)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 
 onMounted(() => {
-  calculateNextMatch()
-  timer = setInterval(calculateNextMatch, 60000)
-  fetchMatchResults()
-})
+  calculateNextMatch();
+  timer = setInterval(calculateNextMatch, 60000);
+  fetchMatchResults();
+});
 
 onUnmounted(() => {
   if (timer) {
-    clearInterval(timer)
+    clearInterval(timer);
   }
-})
+});
 </script>
 
 <style scoped>
@@ -162,7 +176,7 @@ onUnmounted(() => {
 h1 {
   text-align: center;
   font-size: 32px;
-  color: #1E293B;
+  color: #1e293b;
   margin-bottom: 40px;
 }
 
@@ -173,17 +187,13 @@ h1 {
   margin-bottom: 40px;
 }
 
-
-
-
-
 .countdown-text {
   text-align: center;
 }
 
 .countdown-label {
   font-size: 18px;
-  color: #64748B;
+  color: #64748b;
   margin-bottom: 15px;
 }
 
@@ -204,7 +214,7 @@ h1 {
 .time-value {
   font-size: 48px;
   font-weight: bold;
-  color: #2563EB;
+  color: #2563eb;
   background: rgba(37, 99, 235, 0.1);
   padding: 10px 20px;
   border-radius: 10px;
@@ -214,19 +224,19 @@ h1 {
 
 .time-label {
   font-size: 14px;
-  color: #64748B;
+  color: #64748b;
   margin-top: 5px;
 }
 
 .time-separator {
   font-size: 36px;
-  color: #2563EB;
+  color: #2563eb;
   font-weight: bold;
 }
 
 .match-schedule {
   font-size: 14px;
-  color: #94A3B8;
+  color: #94a3b8;
   margin-top: 10px;
 }
 
@@ -236,7 +246,7 @@ h1 {
 
 .match-results h2 {
   font-size: 24px;
-  color: #1E293B;
+  color: #1e293b;
   margin-bottom: 20px;
   text-align: center;
 }
@@ -276,19 +286,19 @@ h1 {
 
 .result-info h3 {
   font-size: 18px;
-  color: #1E293B;
+  color: #1e293b;
   margin-bottom: 5px;
 }
 
 .result-info p {
   font-size: 14px;
-  color: #64748B;
+  color: #64748b;
   margin: 3px 0;
 }
 
 .match-time {
   font-size: 12px !important;
-  color: #94A3B8 !important;
+  color: #94a3b8 !important;
 }
 
 .result-actions {
@@ -307,7 +317,7 @@ h1 {
 }
 
 .btn-accept {
-  background: #10B981;
+  background: #10b981;
   color: white;
 }
 
@@ -317,19 +327,19 @@ h1 {
 }
 
 .btn-reject {
-  background: #EF4444;
+  background: #ef4444;
   color: white;
 }
 
 .btn-reject:hover {
-  background: #DC2626;
+  background: #dc2626;
   transform: translateY(-2px);
 }
 
 .no-results {
   text-align: center;
   padding: 40px;
-  color: #64748B;
+  color: #64748b;
 }
 
 .no-results p {
@@ -341,31 +351,31 @@ h1 {
   .glass-card {
     padding: 30px;
   }
-  
+
   h1 {
     font-size: 24px;
   }
-  
+
   .geometric-animation {
     width: 150px;
     height: 150px;
   }
-  
+
   .time-value {
     font-size: 36px;
     padding: 8px 15px;
     min-width: 60px;
   }
-  
+
   .time-separator {
     font-size: 28px;
   }
-  
+
   .result-card {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .result-actions {
     width: 100%;
     justify-content: center;
@@ -376,52 +386,52 @@ h1 {
   .glass-card {
     padding: 20px;
   }
-  
+
   h1 {
     font-size: 20px;
   }
-  
+
   .geometric-animation {
     width: 120px;
     height: 120px;
   }
-  
+
   .time-value {
     font-size: 28px;
     padding: 6px 12px;
     min-width: 50px;
   }
-  
+
   .time-separator {
     font-size: 22px;
   }
-  
+
   .countdown-time {
     gap: 5px;
   }
-  
+
   .countdown-label {
     font-size: 16px;
   }
-  
+
   .match-schedule {
     font-size: 12px;
   }
-  
+
   .result-card {
     padding: 15px;
   }
-  
+
   .result-avatar {
     width: 50px;
     height: 50px;
     font-size: 20px;
   }
-  
+
   .result-info h3 {
     font-size: 16px;
   }
-  
+
   .result-info p {
     font-size: 13px;
   }
