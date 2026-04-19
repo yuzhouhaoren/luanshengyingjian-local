@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -109,6 +111,24 @@ def _count_labels(samples: Sequence[Dict[str, Any]]) -> Tuple[int, int]:
     return pos, neg
 
 
+def _safe_publish_model(new_model_dir: Path, target_model_dir: Path) -> None:
+    """安全上架逻辑：备份旧模型（如果存在），然后将新模型转移到线上目录。"""
+    # 1. 确保目标目录的父级目录（即 artifacts/dual_tower/）存在
+    target_model_dir.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 2. 如果线上已经有个旧模型，先把它改个名字备份一下
+    if target_model_dir.exists() and target_model_dir.is_dir():
+        backup_name = f"{target_model_dir.name}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        backup_dir = target_model_dir.parent / backup_name
+        
+        print(f"  [publish] 发现旧模型，正在备份至: {backup_dir.name}")
+        shutil.move(str(target_model_dir), str(backup_dir))
+    
+    # 3. 把刚训练出来的安全新目录，移动并重命名为线上目录名
+    print(f"  [publish] 正在将新模型上架至: {target_model_dir}")
+    shutil.move(str(new_model_dir), str(target_model_dir))
+
+
 def _infer_input_dims(samples: Sequence[Dict[str, Any]]) -> Tuple[int, int]:
     """Infer intent/profile input dimensions from sample vectors."""
     intent_dim = 0
@@ -200,9 +220,11 @@ def _train_one_intent(intent_type: str, args: argparse.Namespace) -> Dict[str, A
         trainer_config=trainer_cfg,
     )
 
-    save_dir = Path(args.output_dir) / _intent_subdir(intent_type)
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_save_dir = Path(args.output_dir) / "runs" / f"{_intent_subdir(intent_type)}_{run_id}"
+
     paths = save_training_artifacts(
-        save_dir=save_dir,
+        save_dir=temp_save_dir,
         model=result["model"],
         model_config=model_cfg,
         loss_config=loss_cfg,
@@ -219,8 +241,24 @@ def _train_one_intent(intent_type: str, args: argparse.Namespace) -> Dict[str, A
             "sample_count": len(samples),
             "pos_count": pos,
             "neg_count": neg,
+            "run_id": run_id,
         },
     )
+
+    target_dir = Path(args.output_dir) / _intent_subdir(intent_type)
+    best_val_loss = float(result["best_val_loss"])
+    
+    # 步骤二：校验评估模型好坏，如果低于 1.8 判定为及格可上架（生产可调低）
+    val_loss_threshold = 1.8
+    if best_val_loss <= val_loss_threshold:
+        print(f"  [eval] 验证通过 (val_loss: {best_val_loss:.4f} <= {val_loss_threshold})，准备安全上架。")
+        _safe_publish_model(temp_save_dir, target_dir)
+        publish_status = "published"
+        final_dir = target_dir
+    else:
+        print(f"  [eval] 验证未达标 (val_loss: {best_val_loss:.4f} > {val_loss_threshold})，放弃上架。")
+        publish_status = "rejected"
+        final_dir = temp_save_dir
 
     summary = {
         "intent_type": intent_type,
@@ -231,7 +269,8 @@ def _train_one_intent(intent_type: str, args: argparse.Namespace) -> Dict[str, A
         "val_size": len(val_samples),
         "best_epoch": result["best_epoch"],
         "best_val_loss": result["best_val_loss"],
-        "save_dir": str(save_dir),
+        "publish_status": publish_status,
+        "save_dir": str(final_dir),
         "paths": paths,
     }
     return summary
@@ -263,7 +302,8 @@ def main() -> None:
         print(
             f"- intent={item['intent_type']} samples={item['sample_count']} "
             f"train={item['train_size']} val={item['val_size']} "
-            f"best_val_loss={item['best_val_loss']:.4f}"
+            f"best_val_loss={item['best_val_loss']:.4f} "
+            f"status=[{item.get('publish_status', 'N/A')}]"
         )
 
 
